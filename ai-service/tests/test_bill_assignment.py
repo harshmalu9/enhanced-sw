@@ -150,6 +150,8 @@ async def test_assign_items_rejects_unknown_item(sample_bill):
 @pytest.mark.asyncio
 async def test_assign_items_missing_api_key(sample_bill, monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     service = BillAssignmentService(api_key=None, llm=None, chain=None)
     with pytest.raises(BillAssignmentConfigError) as exc_info:
         await service.assign_items(

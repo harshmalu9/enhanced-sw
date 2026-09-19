@@ -41,6 +41,15 @@ Key Rules & Constraints:
 """
 
 
+from services.llm import (
+    LLMAllProvidersFailedError,
+    LLMConfigurationError,
+    LLMProviderError,
+    LLMRouter,
+    get_llm_router,
+)
+
+
 class BillAssignmentError(Exception):
     """Base exception for bill assignment errors."""
 
@@ -51,17 +60,17 @@ class BillAssignmentError(Exception):
 
 
 class BillAssignmentConfigError(BillAssignmentError):
-    """Raised when Google Gemini API key is not configured."""
+    """Raised when LLM API configuration is missing or invalid."""
 
-    def __init__(self, message: str = "Google Gemini API key is not configured on the server."):
+    def __init__(self, message: str = "LLM API key is not configured on the server."):
         super().__init__(code="MISSING_API_KEY", message=message)
 
 
 class BillAssignmentAPIError(BillAssignmentError):
-    """Raised when Gemini/LangChain API call fails."""
+    """Raised when LLM API call fails across all providers."""
 
-    def __init__(self, message: str = "Failed to communicate with Gemini AI service."):
-        super().__init__(code="GEMINI_API_ERROR", message=message)
+    def __init__(self, message: str = "Failed to communicate with LLM AI service.", code: str = "GEMINI_API_ERROR"):
+        super().__init__(code=code, message=message)
 
 
 class BillAssignmentAmbiguityError(BillAssignmentError):
@@ -79,41 +88,25 @@ class BillAssignmentValidationError(BillAssignmentError):
 
 
 class BillAssignmentService:
-    """Service for mapping natural language consumption instructions to structured item assignments using LangChain + Gemini."""
+    """Service for mapping natural language consumption instructions to structured item assignments using multi-provider LLM fallback."""
 
     def __init__(
         self,
+        router: Optional[LLMRouter] = None,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         llm: Optional[Any] = None,
         chain: Optional[Any] = None,
     ):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        self.router = router or get_llm_router()
+        self.api_key = api_key
+        self.model = model
         self._llm = llm
         self._chain = chain
 
-    def _get_chain(self):
-        """Construct the LangChain assignment chain."""
-        if self._chain is not None:
-            return self._chain
-
-        if self._llm is not None:
-            llm = self._llm
-        else:
-            current_api_key = self.api_key or os.getenv("GOOGLE_API_KEY")
-            if not current_api_key or not current_api_key.strip():
-                logger.error("Google Gemini API key is not set.")
-                raise BillAssignmentConfigError()
-
-            model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-            llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=current_api_key.strip(),
-                temperature=0.0,
-            )
-
-        prompt = ChatPromptTemplate.from_messages(
+    def _get_prompt(self) -> ChatPromptTemplate:
+        """Return the LangChain ChatPromptTemplate for item assignment."""
+        return ChatPromptTemplate.from_messages(
             [
                 ("system", BILL_ASSIGNMENT_SYSTEM_PROMPT),
                 (
@@ -126,6 +119,27 @@ class BillAssignmentService:
             ]
         )
 
+    def _get_chain(self):
+        """Construct the LangChain assignment chain if custom llm/chain provided."""
+        if self._chain is not None:
+            return self._chain
+
+        if self._llm is not None:
+            llm = self._llm
+        else:
+            current_api_key = self.api_key or os.getenv("GOOGLE_API_KEY")
+            if not current_api_key or not current_api_key.strip():
+                logger.error("LLM API key is not set.")
+                raise BillAssignmentConfigError()
+
+            model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=current_api_key.strip(),
+                temperature=0.0,
+            )
+
+        prompt = self._get_prompt()
         structured_llm = (
             llm.with_structured_output(BillAssignmentResult)
             if hasattr(llm, "with_structured_output")
@@ -140,7 +154,7 @@ class BillAssignmentService:
         instruction: str,
     ) -> BillAssignmentResult:
         """
-        Map natural language consumption instructions to bill items and validate participants.
+        Map natural language consumption instructions to bill items and validate participants using multi-provider LLM fallback.
 
         Args:
             bill: Parsed Bill object.
@@ -152,10 +166,10 @@ class BillAssignmentService:
 
         Raises:
             ValueError: If input arguments are empty or invalid.
-            BillAssignmentConfigError: If Google Gemini API key is missing.
+            BillAssignmentConfigError: If no LLM providers are configured.
             BillAssignmentAmbiguityError: If instruction is ambiguous.
             BillAssignmentValidationError: If invalid people/items are referenced.
-            BillAssignmentAPIError: If LLM call fails.
+            BillAssignmentAPIError: If LLM call fails across all providers.
         """
         if not people or len(people) == 0:
             raise ValueError("People list must contain at least one participant name.")
@@ -177,28 +191,40 @@ class BillAssignmentService:
             ]
         )
 
-        model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-        logger.info("Invoking LangChain Bill Assignment with Gemini model '%s'...", model_name)
+        prompt = self._get_prompt()
+        input_dict = {
+            "people": ", ".join(cleaned_people),
+            "bill_items": bill_items_desc,
+            "instruction": instruction.strip(),
+        }
 
         try:
-            chain = self._get_chain()
-            result = await chain.ainvoke(
-                {
-                    "people": ", ".join(cleaned_people),
-                    "bill_items": bill_items_desc,
-                    "instruction": instruction.strip(),
-                }
-            )
+            if self._chain is not None or self._llm is not None:
+                chain = self._get_chain()
+                result = await chain.ainvoke(input_dict)
+            else:
+                result, provider_used = await self.router.ainvoke_structured(
+                    prompt=prompt,
+                    schema=BillAssignmentResult,
+                    input_dict=input_dict,
+                    temperature=0.0,
+                )
+        except LLMConfigurationError as cfg_err:
+            logger.error("LLM configuration error: %s", str(cfg_err))
+            raise BillAssignmentConfigError(str(cfg_err)) from cfg_err
+        except (LLMProviderError, LLMAllProvidersFailedError) as api_err:
+            logger.error("LLM assignment failed across providers: %s", str(api_err))
+            raise BillAssignmentAPIError(str(api_err)) from api_err
         except BillAssignmentConfigError:
             raise
-        except ValueError as val_err:
+        except ValueError:
             raise
         except Exception as exc:
-            logger.error("LangChain Gemini assignment error: %s", str(exc), exc_info=True)
-            raise BillAssignmentAPIError(f"Gemini AI service returned an error: {str(exc)}") from exc
+            logger.error("Unhandled bill assignment error: %s", str(exc), exc_info=True)
+            raise BillAssignmentAPIError(f"LLM service returned an error during assignment: {str(exc)}") from exc
 
         if result is None:
-            raise BillAssignmentAPIError("Failed to obtain structured assignment from Gemini model.")
+            raise BillAssignmentAPIError("Failed to obtain structured assignment from LLM service.")
 
         if not isinstance(result, BillAssignmentResult):
             try:

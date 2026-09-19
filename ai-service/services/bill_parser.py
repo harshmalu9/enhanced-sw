@@ -132,6 +132,15 @@ def validate_bill_consistency(bill: Bill, tolerance: Decimal = Decimal("0.05")) 
         )
 
 
+from services.llm import (
+    LLMAllProvidersFailedError,
+    LLMConfigurationError,
+    LLMProviderError,
+    LLMRouter,
+    get_llm_router,
+)
+
+
 class BillParserError(Exception):
     """Base exception for bill parsing errors."""
 
@@ -142,17 +151,17 @@ class BillParserError(Exception):
 
 
 class BillParserConfigError(BillParserError):
-    """Raised when Google Gemini API configuration is missing or invalid."""
+    """Raised when LLM API configuration is missing or invalid."""
 
-    def __init__(self, message: str = "Google Gemini API key is not configured on the server."):
+    def __init__(self, message: str = "LLM API key is not configured on the server."):
         super().__init__(code="MISSING_API_KEY", message=message)
 
 
 class BillParserAPIError(BillParserError):
-    """Raised when Gemini API call fails."""
+    """Raised when LLM API call fails across all providers."""
 
-    def __init__(self, message: str = "Failed to communicate with Gemini AI service."):
-        super().__init__(code="GEMINI_API_ERROR", message=message)
+    def __init__(self, message: str = "Failed to communicate with LLM service.", code: str = "GEMINI_API_ERROR"):
+        super().__init__(code=code, message=message)
 
 
 class BillParserValidationError(BillParserError):
@@ -163,41 +172,25 @@ class BillParserValidationError(BillParserError):
 
 
 class BillParserService:
-    """Service for extracting and normalizing structured bill data using LangChain + Google Gemini LLM."""
+    """Service for extracting and normalizing structured bill data using multi-provider LLM fallback."""
 
     def __init__(
         self,
+        router: Optional[LLMRouter] = None,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         llm: Optional[Any] = None,
         chain: Optional[Any] = None,
     ):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY")
-        self.model = model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+        self.router = router or get_llm_router()
+        self.api_key = api_key
+        self.model = model
         self._llm = llm
         self._chain = chain
 
-    def _get_chain(self):
-        """Construct the LangChain parsing chain."""
-        if self._chain is not None:
-            return self._chain
-
-        if self._llm is not None:
-            llm = self._llm
-        else:
-            current_api_key = self.api_key or os.getenv("GOOGLE_API_KEY")
-            if not current_api_key or not current_api_key.strip():
-                logger.error("Google Gemini API key is not set.")
-                raise BillParserConfigError()
-
-            model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-            llm = ChatGoogleGenerativeAI(
-                model=model_name,
-                google_api_key=current_api_key.strip(),
-                temperature=0.0,
-            )
-
-        prompt = ChatPromptTemplate.from_messages(
+    def _get_prompt(self) -> ChatPromptTemplate:
+        """Return the LangChain ChatPromptTemplate for bill extraction."""
+        return ChatPromptTemplate.from_messages(
             [
                 ("system", BILL_EXTRACTION_SYSTEM_PROMPT),
                 (
@@ -207,6 +200,27 @@ class BillParserService:
             ]
         )
 
+    def _get_chain(self):
+        """Construct a custom LangChain parsing chain if custom llm/chain provided."""
+        if self._chain is not None:
+            return self._chain
+
+        if self._llm is not None:
+            llm = self._llm
+        else:
+            current_api_key = self.api_key or os.getenv("GOOGLE_API_KEY")
+            if not current_api_key or not current_api_key.strip():
+                logger.error("LLM API key is not set.")
+                raise BillParserConfigError()
+
+            model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
+            llm = ChatGoogleGenerativeAI(
+                model=model_name,
+                google_api_key=current_api_key.strip(),
+                temperature=0.0,
+            )
+
+        prompt = self._get_prompt()
         structured_llm = (
             llm.with_structured_output(Bill)
             if hasattr(llm, "with_structured_output")
@@ -216,7 +230,7 @@ class BillParserService:
 
     async def parse_bill(self, ocr_text: str) -> Bill:
         """
-        Extract structured bill data from raw OCR text using LangChain + Gemini structured outputs.
+        Extract structured bill data from raw OCR text using multi-provider LLM fallback.
 
         Args:
             ocr_text: Raw OCR text from receipt.
@@ -225,29 +239,44 @@ class BillParserService:
             Bill: Strongly validated Pydantic Bill object.
 
         Raises:
-            BillParserConfigError: If Google Gemini API key is missing.
-            BillParserAPIError: If Gemini API request fails.
+            BillParserConfigError: If no LLM providers are configured.
+            BillParserAPIError: If all LLM provider attempts fail.
             BillParserValidationError: If LLM output fails validation.
         """
         if not ocr_text or not ocr_text.strip():
             raise ValueError("OCR text must not be empty or whitespace only.")
 
-        model_name = self.model or os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
-        logger.info("Invoking LangChain Bill Parser with Gemini model '%s'...", model_name)
+        prompt = self._get_prompt()
+        input_dict = {"ocr_text": ocr_text.strip()}
 
         try:
-            chain = self._get_chain()
-            parsed_bill = await chain.ainvoke({"ocr_text": ocr_text.strip()})
+            # If explicit chain or llm is injected (e.g. in legacy unit tests), execute directly
+            if self._chain is not None or self._llm is not None:
+                chain = self._get_chain()
+                parsed_bill = await chain.ainvoke(input_dict)
+            else:
+                parsed_bill, provider_used = await self.router.ainvoke_structured(
+                    prompt=prompt,
+                    schema=Bill,
+                    input_dict=input_dict,
+                    temperature=0.0,
+                )
+        except LLMConfigurationError as cfg_err:
+            logger.error("LLM configuration error: %s", str(cfg_err))
+            raise BillParserConfigError(str(cfg_err)) from cfg_err
+        except (LLMProviderError, LLMAllProvidersFailedError) as api_err:
+            logger.error("LLM extraction failed across providers: %s", str(api_err))
+            raise BillParserAPIError(str(api_err)) from api_err
         except BillParserConfigError:
             raise
-        except ValueError as val_err:
+        except ValueError:
             raise
         except Exception as exc:
-            logger.error("LangChain Gemini parsing error: %s", str(exc), exc_info=True)
-            raise BillParserAPIError(f"Gemini AI service returned an error during processing: {str(exc)}") from exc
+            logger.error("Unhandled bill parsing error: %s", str(exc), exc_info=True)
+            raise BillParserAPIError(f"LLM service returned an error during processing: {str(exc)}") from exc
 
         if parsed_bill is None:
-            logger.error("Parsed bill object is missing from LangChain response.")
+            logger.error("Parsed bill object is missing from LLM response.")
             raise BillParserValidationError("Failed to parse structured bill from model response.")
 
         if not isinstance(parsed_bill, Bill):
@@ -279,4 +308,5 @@ def get_bill_parser_service() -> BillParserService:
     if _bill_parser_service is None:
         _bill_parser_service = BillParserService()
     return _bill_parser_service
+
 

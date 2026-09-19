@@ -139,6 +139,8 @@ async def test_bill_parser_empty_text_raises_value_error():
 @pytest.mark.asyncio
 async def test_bill_parser_missing_api_key_raises_config_error(monkeypatch):
     monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     service = BillParserService(api_key=None, llm=None, chain=None)
     with pytest.raises(BillParserConfigError) as exc_info:
         await service.parse_bill("Valid OCR text")

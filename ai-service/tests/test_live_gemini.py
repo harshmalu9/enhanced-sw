@@ -12,9 +12,10 @@ from services.bill_splitter import BillSplitterService
 load_dotenv()
 
 API_KEY = os.getenv("GOOGLE_API_KEY")
+RUN_LIVE = os.getenv("RUN_LIVE_TESTS", "").lower() in ("true", "1", "yes")
 pytestmark = pytest.mark.skipif(
-    not API_KEY or API_KEY.startswith("your_") or API_KEY == "fake_key",
-    reason="GOOGLE_API_KEY not configured for live LLM tests",
+    not RUN_LIVE or not API_KEY or API_KEY.startswith("your_") or API_KEY == "fake_key",
+    reason="Live tests require RUN_LIVE_TESTS=true and valid GOOGLE_API_KEY",
 )
 
 

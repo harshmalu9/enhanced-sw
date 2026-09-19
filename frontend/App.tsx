@@ -5,6 +5,7 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
+  Switch,
   Text,
   TouchableOpacity,
   View,
@@ -41,6 +42,7 @@ function MainApp() {
   const [stage, setStage] = useState<Stage>("upload");
   const [receipt, setReceipt] = useState<ReceiptFile | null>(null);
   const [people, setPeople] = useState<string[]>([]);
+  const [isEqualSplit, setIsEqualSplit] = useState<boolean>(false);
   const [instruction, setInstruction] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +84,11 @@ function MainApp() {
       return;
     }
 
-    if (!instruction.trim()) {
+    const finalInstruction = isEqualSplit
+      ? "Everyone shared all items equally."
+      : instruction.trim();
+
+    if (!isEqualSplit && !finalInstruction) {
       setError("Please enter who consumed which items in the instruction box.");
       return;
     }
@@ -94,7 +100,7 @@ function MainApp() {
       const response = await processBill({
         receipt,
         people,
-        instruction: instruction.trim(),
+        instruction: finalInstruction,
       });
 
       setSplitResult(response.data);
@@ -117,18 +123,23 @@ function MainApp() {
     setStage("upload");
     setReceipt(null);
     setPeople([]);
+    setIsEqualSplit(false);
     setInstruction("");
     setSplitResult(null);
     setValidation(null);
     setError(null);
   };
 
+  const isCalculateDisabled =
+    people.length < 2 || (!isEqualSplit && !instruction.trim()) || isLoading;
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
         <Header />
 
@@ -136,6 +147,7 @@ function MainApp() {
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          automaticallyAdjustKeyboardInsets={true}
         >
           <ErrorBanner
             message={error}
@@ -172,7 +184,7 @@ function MainApp() {
 
                   <Text style={styles.formTitle}>Bill Split Details</Text>
                   <Text style={styles.formSubtitle}>
-                    Add participants and explain consumption in natural language.
+                    Add participants and choose how to split the bill.
                   </Text>
 
                   {/* Selected Receipt Summary pill */}
@@ -185,6 +197,7 @@ function MainApp() {
                     </View>
                   )}
 
+                  {/* Participants Section */}
                   <ParticipantInput
                     people={people}
                     onAddPerson={handleAddPerson}
@@ -192,24 +205,51 @@ function MainApp() {
                     disabled={isLoading}
                   />
 
-                  <InstructionInput
-                    instruction={instruction}
-                    onChangeInstruction={setInstruction}
-                    disabled={isLoading}
-                  />
+                  {/* Equal Split Toggle Option */}
+                  <View style={styles.equalSplitCard}>
+                    <View style={styles.equalSplitLeft}>
+                      <Text style={styles.equalSplitTitle}>⚖ Split Bill Equally</Text>
+                      <Text style={styles.equalSplitSubtitle}>
+                        Divide the total bill evenly among all {people.length > 0 ? people.length : ""}{" "}
+                        participants
+                      </Text>
+                    </View>
+                    <Switch
+                      value={isEqualSplit}
+                      onValueChange={setIsEqualSplit}
+                      trackColor={{ false: "#cbd5e1", true: "#93c5fd" }}
+                      thumbColor={isEqualSplit ? "#2563eb" : "#f1f5f9"}
+                      disabled={isLoading}
+                    />
+                  </View>
+
+                  {/* Conditional: Either show Equal Split Banner or Natural Language Input */}
+                  {isEqualSplit ? (
+                    <View style={styles.equalSplitNotice}>
+                      <Text style={styles.equalSplitNoticeText}>
+                        ✓ Equal split enabled: Every participant will pay an exact equal share
+                        of the bill and tax. No AI prompt required.
+                      </Text>
+                    </View>
+                  ) : (
+                    <InstructionInput
+                      instruction={instruction}
+                      onChangeInstruction={setInstruction}
+                      disabled={isLoading}
+                    />
+                  )}
 
                   <TouchableOpacity
                     style={[
                       styles.calculateButton,
-                      (people.length < 2 || !instruction.trim() || isLoading) &&
-                        styles.buttonDisabled,
+                      isCalculateDisabled && styles.buttonDisabled,
                     ]}
                     onPress={handleCalculateSplit}
-                    disabled={people.length < 2 || !instruction.trim() || isLoading}
+                    disabled={isCalculateDisabled}
                     activeOpacity={0.8}
                   >
                     <Text style={styles.calculateButtonText}>
-                      ⚡ Calculate Split
+                      {isEqualSplit ? "⚡ Calculate Equal Split" : "⚡ Calculate Split"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -245,7 +285,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    paddingBottom: 80,
+    paddingBottom: 140,
   },
   stageDetailsCard: {
     backgroundColor: "#ffffff",
@@ -310,6 +350,45 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#0f172a",
     flex: 1,
+  },
+  equalSplitCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#f8fafc",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+    borderRadius: 12,
+    padding: 14,
+    marginVertical: 10,
+  },
+  equalSplitLeft: {
+    flex: 1,
+    marginRight: 12,
+  },
+  equalSplitTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#0f172a",
+  },
+  equalSplitSubtitle: {
+    fontSize: 12,
+    color: "#64748b",
+    marginTop: 2,
+  },
+  equalSplitNotice: {
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 10,
+    padding: 12,
+    marginVertical: 10,
+  },
+  equalSplitNoticeText: {
+    fontSize: 13,
+    color: "#1e40af",
+    lineHeight: 18,
+    fontWeight: "500",
   },
   calculateButton: {
     backgroundColor: "#16a34a",

@@ -1,7 +1,7 @@
 from typing import List, Optional
 from pydantic import BaseModel, Field
 from models.assignment import ItemAssignment
-from models.bill import Bill
+from models.bill import Bill, BillValidationResult
 
 
 class PersonItemShare(BaseModel):
@@ -91,3 +91,7 @@ class BillSplitResponse(BaseModel):
 
     success: bool = Field(default=True, description="Indicates if split succeeded.")
     data: BillSplitResult = Field(description="Calculated bill split results.")
+    validation: Optional[BillValidationResult] = Field(
+        default=None,
+        description="Deterministic consistency validation results for the extracted bill amounts.",
+    )

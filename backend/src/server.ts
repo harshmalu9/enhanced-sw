@@ -5,8 +5,8 @@ import app from "./app.js";
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 
-const server = app.listen(PORT, () => {
-  console.log(`Backend server is running on http://localhost:${PORT}`);
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Backend server is running on http://0.0.0.0:${PORT} (reachable at http://localhost:${PORT} and on LAN)`);
 });
 
 process.on("SIGTERM", () => {

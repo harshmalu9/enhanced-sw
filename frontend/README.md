@@ -1,36 +1,79 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Enhanced Splitwise Frontend (Expo React Native + TypeScript)
 
-## Getting Started
+Minimal mobile-first frontend for Feature 1: **Intelligent Bill Splitting**.
 
-First, run the development server:
+## Architecture & Flow
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+```text
+React Native / Expo (Port 8081 / Web 8081)
+        ↓
+Node.js / Express Backend (Port 3001)
+        ↓
+Python FastAPI AI Service (Port 8000)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup & Running
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 1. Configure API Base URL
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` to `.env` in `frontend/`:
 
-## Learn More
+```bash
+cp .env.example .env
+```
 
-To learn more about Next.js, take a look at the following resources:
+Set `EXPO_PUBLIC_API_URL` based on your environment:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- **Web browser / Localhost:**
+  ```env
+  EXPO_PUBLIC_API_URL=http://localhost:3001
+  ```
+- **Android Emulator:**
+  ```env
+  EXPO_PUBLIC_API_URL=http://10.0.2.2:3001
+  ```
+- **Physical Android / iOS device (on same Wi-Fi):**
+  ```env
+  EXPO_PUBLIC_API_URL=http://<YOUR_LOCAL_IP>:3001
+  ```
+  *(e.g. `http://192.168.1.100:3001`)*
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### 2. Start the App
 
-## Deploy on Vercel
+```bash
+# Start Expo development server (opens interactive QR code / web / android options)
+npm start
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Or launch directly on Web
+npm run web
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+# Or launch on Android device / emulator
+npm run android
+```
+
+### 3. Typecheck
+
+```bash
+npm run typecheck
+```
+
+## Project Structure
+
+```text
+frontend/
+├── App.tsx                     # Main coordinating component with 3-stage flow
+├── app.json                    # Expo configuration
+├── components/
+│   ├── ErrorBanner.tsx         # Clean error display with retry/dismiss
+│   ├── Header.tsx              # Mobile header
+│   ├── InstructionInput.tsx    # Multiline natural language consumption input
+│   ├── LoadingOverlay.tsx      # Processing status indicator
+│   ├── ParticipantInput.tsx    # Participant chips, add/remove
+│   ├── ReceiptUploader.tsx     # Stage 1 receipt selector
+│   └── SplitResultView.tsx     # Results screen (shares, items, reconciled total, validation)
+├── services/
+│   └── api.ts                  # API service client connecting to Node backend proxy
+├── types/
+│   └── bill.ts                 # TypeScript type definitions
+└── tsconfig.json
+```

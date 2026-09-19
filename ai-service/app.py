@@ -507,6 +507,7 @@ async def process_bill_end_to_end(
     try:
         bill_parser = get_bill_parser_service()
         bill = await bill_parser.parse_bill(ocr_text)
+        validation = validate_bill_consistency(bill)
     except BillParserConfigError as cfg_err:
         return error_response(status.HTTP_503_SERVICE_UNAVAILABLE, cfg_err.code, cfg_err.message)
     except BillParserAPIError as api_err:
@@ -534,6 +535,7 @@ async def process_bill_end_to_end(
         return {
             "success": True,
             "data": split_result.model_dump(),
+            "validation": validation.model_dump() if validation else None,
         }
     except BillAssignmentAmbiguityError as amb_err:
         return error_response(status.HTTP_400_BAD_REQUEST, amb_err.code, amb_err.message)

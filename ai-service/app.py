@@ -43,6 +43,14 @@ from services.expense import (
     ExpenseCategorizationValidationError,
     get_expense_categorizer_service,
 )
+from services.spending import (
+    SpendingInsightsAPIError,
+    SpendingInsightsConfigError,
+    SpendingInsightsRequest,
+    SpendingInsightsResponse,
+    SpendingInsightsValidationError,
+    get_spending_insights_service,
+)
 from services.ocr_service import get_ocr_service
 
 # Load environment variables from .env if present
@@ -623,4 +631,63 @@ async def categorize_expense(payload: ExpenseCategorizeRequest):
             "INTERNAL_SERVER_ERROR",
             "An unexpected error occurred while categorizing the expense.",
         )
+
+
+@app.post(
+    "/api/spending/insights",
+    response_model=SpendingInsightsResponse,
+    responses={
+        200: {"description": "Spending insights generated successfully"},
+        400: {"description": "Invalid expense payload or validation error"},
+        500: {"description": "Internal server error or validation failure"},
+        502: {"description": "LLM provider communication failure"},
+        503: {"description": "LLM API keys not configured"},
+    },
+)
+async def get_spending_insights(payload: SpendingInsightsRequest):
+    """
+    Perform deterministic spending analysis and generate grounded AI insights.
+    """
+    try:
+        service = get_spending_insights_service()
+        result = await service.generate_insights(
+            expenses=payload.expenses,
+            period=payload.period,
+        )
+        return {
+            "success": True,
+            "data": result.model_dump(),
+        }
+    except SpendingInsightsConfigError as cfg_err:
+        return error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            cfg_err.code,
+            cfg_err.message,
+        )
+    except SpendingInsightsAPIError as api_err:
+        return error_response(
+            status.HTTP_502_BAD_GATEWAY,
+            api_err.code,
+            api_err.message,
+        )
+    except SpendingInsightsValidationError as val_err:
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            val_err.code,
+            val_err.message,
+        )
+    except ValueError as val_err:
+        return error_response(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_REQUEST",
+            str(val_err),
+        )
+    except Exception as exc:
+        logger.error("Unhandled error during spending insights: %s", str(exc), exc_info=True)
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred while generating spending insights.",
+        )
+
 

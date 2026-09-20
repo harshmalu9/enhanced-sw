@@ -347,6 +347,64 @@ uvicorn app:app --reload --port 8000
      }
      ```
 
+8. **AI-Powered Spending Insights**:
+   - `POST /api/spending/insights` (AI Service) / `POST /api/spending/insights` (Backend Proxy)
+   - Performs deterministic mathematical aggregation (totals, averages, category percentages, top category, largest expense) and generates grounded natural-language insights using multi-provider LLM fallback.
+   - **Example Request**:
+     ```bash
+     curl -X POST http://localhost:8000/api/spending/insights \
+       -H "Content-Type: application/json" \
+       -d '{
+         "expenses": [
+           {"description": "Pizza with friends", "amount": 600, "category": "Food & Dining", "merchant": "Dominos"},
+           {"description": "Uber ride", "amount": 450, "category": "Transportation", "merchant": "Uber"},
+           {"description": "New shoes", "amount": 1500, "category": "Shopping", "merchant": "Nike"},
+           {"description": "Netflix subscription", "amount": 499, "category": "Entertainment", "merchant": "Netflix"}
+         ]
+       }'
+     ```
+   - **Example Response**:
+     ```json
+     {
+       "success": true,
+       "data": {
+         "summary": {
+           "total_spending": 3049.0,
+           "expense_count": 4,
+           "average_expense": 762.25,
+           "spending_by_category": {
+             "Food & Dining": 600.0,
+             "Transportation": 450.0,
+             "Shopping": 1500.0,
+             "Entertainment": 499.0
+           },
+           "category_percentages": {
+             "Food & Dining": 19.68,
+             "Transportation": 14.76,
+             "Shopping": 49.2,
+             "Entertainment": 16.37
+           },
+           "highest_spending_category": {
+             "category": "Shopping",
+             "amount": 1500.0,
+             "percentage": 49.2
+           },
+           "largest_expense": {
+             "description": "New shoes",
+             "amount": 1500.0,
+             "category": "Shopping",
+             "merchant": "Nike"
+           }
+         },
+         "insights": [
+           "Shopping represents the highest expenditure at ₹1,500.00, accounting for 49.2% of total spending.",
+           "The single largest transaction was for 'New shoes' from Nike at ₹1,500.00."
+         ],
+         "period": null
+       }
+     }
+     ```
+
 ---
 
 ## AI & Mathematical Architecture

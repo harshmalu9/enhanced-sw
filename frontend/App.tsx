@@ -22,6 +22,7 @@ import { SplitResultView } from "./components/SplitResultView";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { ExpenseCategorizer } from "./components/ExpenseCategorizer";
+import { SpendingInsightsView } from "./components/SpendingInsightsView";
 import { processBill, ApiError } from "./services/api";
 import {
   BillSplitResult,
@@ -29,7 +30,7 @@ import {
   ReceiptFile,
 } from "./types/bill";
 
-type ActiveTab = "split" | "categorize";
+type ActiveTab = "split" | "categorize" | "insights";
 type Stage = "upload" | "details" | "result";
 
 export default function App() {
@@ -136,6 +137,17 @@ function MainApp() {
   const isCalculateDisabled =
     people.length < 2 || (!isEqualSplit && !instruction.trim()) || isLoading;
 
+  const getHeaderSubtitle = () => {
+    switch (activeTab) {
+      case "split":
+        return "Intelligent Bill Split";
+      case "categorize":
+        return "Automatic Expense Categorization";
+      case "insights":
+        return "AI-Powered Spending Insights";
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
@@ -144,13 +156,7 @@ function MainApp() {
         style={styles.container}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <Header
-          subtitle={
-            activeTab === "split"
-              ? "Intelligent Bill Split"
-              : "Automatic Expense Categorization"
-          }
-        />
+        <Header subtitle={getHeaderSubtitle()} />
 
         {/* Tab Navigation */}
         <View style={styles.tabContainer}>
@@ -164,8 +170,9 @@ function MainApp() {
                 styles.tabButtonText,
                 activeTab === "split" && styles.tabButtonTextActive,
               ]}
+              numberOfLines={1}
             >
-              🧾 Bill Splitter
+              🧾 Splitter
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -181,8 +188,27 @@ function MainApp() {
                 styles.tabButtonText,
                 activeTab === "categorize" && styles.tabButtonTextActive,
               ]}
+              numberOfLines={1}
             >
-              🏷 Categorize Expense
+              🏷 Categorize
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === "insights" && styles.tabButtonActive,
+            ]}
+            onPress={() => setActiveTab("insights")}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === "insights" && styles.tabButtonTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              💡 Insights
             </Text>
           </TouchableOpacity>
         </View>
@@ -193,7 +219,9 @@ function MainApp() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
         >
-          {activeTab === "categorize" ? (
+          {activeTab === "insights" ? (
+            <SpendingInsightsView />
+          ) : activeTab === "categorize" ? (
             <ExpenseCategorizer />
           ) : (
             <>
@@ -356,7 +384,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   tabButtonText: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: "600",
     color: "#64748b",
   },

@@ -1,6 +1,7 @@
 import { Platform } from "react-native";
 import { ReceiptFile, SplitResponse } from "../types/bill";
 import { ExpenseCategorizeParams, ExpenseCategorizeResponse } from "../types/expense";
+import { ExpenseInput, PeriodInput, SpendingInsightsResponse } from "../types/spending";
 
 // Configurable API base URL: EXPO_PUBLIC_API_URL (defaults to http://192.168.1.100:3001 or localhost)
 const API_BASE_URL =
@@ -178,6 +179,56 @@ export async function categorizeExpense({
     }
 
     return data as ExpenseCategorizeResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function getSpendingInsights({
+  expenses,
+  period,
+}: {
+  expenses: ExpenseInput[];
+  period?: PeriodInput;
+}): Promise<SpendingInsightsResponse> {
+  const url = `${API_BASE_URL}/api/spending/insights`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        expenses,
+        period,
+      }),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received an invalid non-JSON response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to generate spending insights.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data as SpendingInsightsResponse;
   } catch (err: unknown) {
     if (err instanceof ApiError) {
       throw err;

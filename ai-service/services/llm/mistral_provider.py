@@ -32,6 +32,7 @@ class MistralProvider(BaseLLMProvider):
             model=model_name,
             mistral_api_key=key,
             temperature=temperature,
+            max_retries=1,
         )
 
         return (

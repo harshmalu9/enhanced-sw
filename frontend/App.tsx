@@ -21,6 +21,7 @@ import { InstructionInput } from "./components/InstructionInput";
 import { SplitResultView } from "./components/SplitResultView";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingOverlay } from "./components/LoadingOverlay";
+import { ExpenseCategorizer } from "./components/ExpenseCategorizer";
 import { processBill, ApiError } from "./services/api";
 import {
   BillSplitResult,
@@ -28,6 +29,7 @@ import {
   ReceiptFile,
 } from "./types/bill";
 
+type ActiveTab = "split" | "categorize";
 type Stage = "upload" | "details" | "result";
 
 export default function App() {
@@ -39,6 +41,7 @@ export default function App() {
 }
 
 function MainApp() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("split");
   const [stage, setStage] = useState<Stage>("upload");
   const [receipt, setReceipt] = useState<ReceiptFile | null>(null);
   const [people, setPeople] = useState<string[]>([]);
@@ -141,7 +144,48 @@ function MainApp() {
         style={styles.container}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <Header />
+        <Header
+          subtitle={
+            activeTab === "split"
+              ? "Intelligent Bill Split"
+              : "Automatic Expense Categorization"
+          }
+        />
+
+        {/* Tab Navigation */}
+        <View style={styles.tabContainer}>
+          <TouchableOpacity
+            style={[styles.tabButton, activeTab === "split" && styles.tabButtonActive]}
+            onPress={() => setActiveTab("split")}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === "split" && styles.tabButtonTextActive,
+              ]}
+            >
+              🧾 Bill Splitter
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === "categorize" && styles.tabButtonActive,
+            ]}
+            onPress={() => setActiveTab("categorize")}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === "categorize" && styles.tabButtonTextActive,
+              ]}
+            >
+              🏷 Categorize Expense
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <ScrollView
           style={styles.scrollContainer}
@@ -149,119 +193,125 @@ function MainApp() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
         >
-          <ErrorBanner
-            message={error}
-            onDismiss={() => setError(null)}
-            onRetry={stage === "details" ? handleCalculateSplit : undefined}
-          />
-
-          {isLoading ? (
-            <LoadingOverlay />
+          {activeTab === "categorize" ? (
+            <ExpenseCategorizer />
           ) : (
             <>
-              {/* STAGE 1: Receipt Selection */}
-              {stage === "upload" && (
-                <ReceiptUploader
-                  receipt={receipt}
-                  onSelectReceipt={handleSelectReceipt}
-                  onContinue={handleContinueToDetails}
-                  isLoading={isLoading}
-                />
-              )}
+              <ErrorBanner
+                message={error}
+                onDismiss={() => setError(null)}
+                onRetry={stage === "details" ? handleCalculateSplit : undefined}
+              />
 
-              {/* STAGE 2: People & Instructions */}
-              {stage === "details" && (
-                <View style={styles.stageDetailsCard}>
-                  <View style={styles.stageHeaderRow}>
-                    <TouchableOpacity
-                      onPress={() => setStage("upload")}
-                      style={styles.backLink}
-                    >
-                      <Text style={styles.backLinkText}>← Change Receipt</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.stageIndicator}>Stage 2 of 2</Text>
-                  </View>
-
-                  <Text style={styles.formTitle}>Bill Split Details</Text>
-                  <Text style={styles.formSubtitle}>
-                    Add participants and choose how to split the bill.
-                  </Text>
-
-                  {/* Selected Receipt Summary pill */}
-                  {receipt && (
-                    <View style={styles.receiptPill}>
-                      <Text style={styles.receiptPillLabel}>Receipt:</Text>
-                      <Text style={styles.receiptPillName} numberOfLines={1}>
-                        {receipt.name}
-                      </Text>
-                    </View>
-                  )}
-
-                  {/* Participants Section */}
-                  <ParticipantInput
-                    people={people}
-                    onAddPerson={handleAddPerson}
-                    onRemovePerson={handleRemovePerson}
-                    disabled={isLoading}
-                  />
-
-                  {/* Equal Split Toggle Option */}
-                  <View style={styles.equalSplitCard}>
-                    <View style={styles.equalSplitLeft}>
-                      <Text style={styles.equalSplitTitle}>⚖ Split Bill Equally</Text>
-                      <Text style={styles.equalSplitSubtitle}>
-                        Divide the total bill evenly among all {people.length > 0 ? people.length : ""}{" "}
-                        participants
-                      </Text>
-                    </View>
-                    <Switch
-                      value={isEqualSplit}
-                      onValueChange={setIsEqualSplit}
-                      trackColor={{ false: "#cbd5e1", true: "#93c5fd" }}
-                      thumbColor={isEqualSplit ? "#2563eb" : "#f1f5f9"}
-                      disabled={isLoading}
-                    />
-                  </View>
-
-                  {/* Conditional: Either show Equal Split Banner or Natural Language Input */}
-                  {isEqualSplit ? (
-                    <View style={styles.equalSplitNotice}>
-                      <Text style={styles.equalSplitNoticeText}>
-                        ✓ Equal split enabled: Every participant will pay an exact equal share
-                        of the bill and tax. No AI prompt required.
-                      </Text>
-                    </View>
-                  ) : (
-                    <InstructionInput
-                      instruction={instruction}
-                      onChangeInstruction={setInstruction}
-                      disabled={isLoading}
+              {isLoading ? (
+                <LoadingOverlay />
+              ) : (
+                <>
+                  {/* STAGE 1: Receipt Selection */}
+                  {stage === "upload" && (
+                    <ReceiptUploader
+                      receipt={receipt}
+                      onSelectReceipt={handleSelectReceipt}
+                      onContinue={handleContinueToDetails}
+                      isLoading={isLoading}
                     />
                   )}
 
-                  <TouchableOpacity
-                    style={[
-                      styles.calculateButton,
-                      isCalculateDisabled && styles.buttonDisabled,
-                    ]}
-                    onPress={handleCalculateSplit}
-                    disabled={isCalculateDisabled}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.calculateButtonText}>
-                      {isEqualSplit ? "⚡ Calculate Equal Split" : "⚡ Calculate Split"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                  {/* STAGE 2: People & Instructions */}
+                  {stage === "details" && (
+                    <View style={styles.stageDetailsCard}>
+                      <View style={styles.stageHeaderRow}>
+                        <TouchableOpacity
+                          onPress={() => setStage("upload")}
+                          style={styles.backLink}
+                        >
+                          <Text style={styles.backLinkText}>← Change Receipt</Text>
+                        </TouchableOpacity>
+                        <Text style={styles.stageIndicator}>Stage 2 of 2</Text>
+                      </View>
 
-              {/* STAGE 3: Final Split Result */}
-              {stage === "result" && splitResult && (
-                <SplitResultView
-                  splitResult={splitResult}
-                  validation={validation}
-                  onReset={handleReset}
-                />
+                      <Text style={styles.formTitle}>Bill Split Details</Text>
+                      <Text style={styles.formSubtitle}>
+                        Add participants and choose how to split the bill.
+                      </Text>
+
+                      {/* Selected Receipt Summary pill */}
+                      {receipt && (
+                        <View style={styles.receiptPill}>
+                          <Text style={styles.receiptPillLabel}>Receipt:</Text>
+                          <Text style={styles.receiptPillName} numberOfLines={1}>
+                            {receipt.name}
+                          </Text>
+                        </View>
+                      )}
+
+                      {/* Participants Section */}
+                      <ParticipantInput
+                        people={people}
+                        onAddPerson={handleAddPerson}
+                        onRemovePerson={handleRemovePerson}
+                        disabled={isLoading}
+                      />
+
+                      {/* Equal Split Toggle Option */}
+                      <View style={styles.equalSplitCard}>
+                        <View style={styles.equalSplitLeft}>
+                          <Text style={styles.equalSplitTitle}>⚖ Split Bill Equally</Text>
+                          <Text style={styles.equalSplitSubtitle}>
+                            Divide the total bill evenly among all{" "}
+                            {people.length > 0 ? people.length : ""} participants
+                          </Text>
+                        </View>
+                        <Switch
+                          value={isEqualSplit}
+                          onValueChange={setIsEqualSplit}
+                          trackColor={{ false: "#cbd5e1", true: "#93c5fd" }}
+                          thumbColor={isEqualSplit ? "#2563eb" : "#f1f5f9"}
+                          disabled={isLoading}
+                        />
+                      </View>
+
+                      {/* Conditional: Either show Equal Split Banner or Natural Language Input */}
+                      {isEqualSplit ? (
+                        <View style={styles.equalSplitNotice}>
+                          <Text style={styles.equalSplitNoticeText}>
+                            ✓ Equal split enabled: Every participant will pay an exact equal share
+                            of the bill and tax. No AI prompt required.
+                          </Text>
+                        </View>
+                      ) : (
+                        <InstructionInput
+                          instruction={instruction}
+                          onChangeInstruction={setInstruction}
+                          disabled={isLoading}
+                        />
+                      )}
+
+                      <TouchableOpacity
+                        style={[
+                          styles.calculateButton,
+                          isCalculateDisabled && styles.buttonDisabled,
+                        ]}
+                        onPress={handleCalculateSplit}
+                        disabled={isCalculateDisabled}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={styles.calculateButtonText}>
+                          {isEqualSplit ? "⚡ Calculate Equal Split" : "⚡ Calculate Split"}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
+
+                  {/* STAGE 3: Final Split Result */}
+                  {stage === "result" && splitResult && (
+                    <SplitResultView
+                      splitResult={splitResult}
+                      validation={validation}
+                      onReset={handleReset}
+                    />
+                  )}
+                </>
               )}
             </>
           )}
@@ -279,6 +329,40 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: "#f8fafc",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#f1f5f9",
+    padding: 4,
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: "center",
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: "#ffffff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  tabButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#64748b",
+  },
+  tabButtonTextActive: {
+    color: "#2563eb",
+    fontWeight: "700",
   },
   scrollContainer: {
     flex: 1,

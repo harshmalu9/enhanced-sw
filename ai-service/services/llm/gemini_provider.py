@@ -26,12 +26,13 @@ class GeminiProvider(BaseLLMProvider):
             )
 
         key = (self.api_key if self.api_key is not None else os.getenv("GOOGLE_API_KEY", "")).strip()
-        model_name = self.model or os.getenv("GEMINI_MODEL", self.DEFAULT_MODEL)
+        model_name = self.model or os.getenv("GOOGLE_MODEL") or os.getenv("GEMINI_MODEL", self.DEFAULT_MODEL)
 
         llm = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=key,
             temperature=temperature,
+            max_retries=1,
         )
 
         return (

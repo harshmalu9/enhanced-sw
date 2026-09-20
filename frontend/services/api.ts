@@ -1,5 +1,6 @@
 import { Platform } from "react-native";
 import { ReceiptFile, SplitResponse } from "../types/bill";
+import { ExpenseCategorizeParams, ExpenseCategorizeResponse } from "../types/expense";
 
 // Configurable API base URL: EXPO_PUBLIC_API_URL (defaults to http://192.168.1.100:3001 or localhost)
 const API_BASE_URL =
@@ -137,6 +138,55 @@ export async function processBill({
       );
     }
   });
+}
+
+export async function categorizeExpense({
+  description,
+  amount,
+  merchant,
+}: ExpenseCategorizeParams): Promise<ExpenseCategorizeResponse> {
+  const url = `${API_BASE_URL}/api/expenses/categorize`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        description,
+        amount: amount !== undefined && !isNaN(amount) ? amount : undefined,
+        merchant: merchant?.trim() || undefined,
+      }),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received an invalid non-JSON response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to categorize expense.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data as ExpenseCategorizeResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
 }
 
 export { API_BASE_URL };

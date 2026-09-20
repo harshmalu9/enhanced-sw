@@ -35,6 +35,14 @@ from services.bill_splitter import (
     UnassignedItemsError,
     get_bill_splitter_service,
 )
+from services.expense import (
+    ExpenseCategorizeRequest,
+    ExpenseCategorizeResponse,
+    ExpenseCategorizationAPIError,
+    ExpenseCategorizationConfigError,
+    ExpenseCategorizationValidationError,
+    get_expense_categorizer_service,
+)
 from services.ocr_service import get_ocr_service
 
 # Load environment variables from .env if present
@@ -548,3 +556,71 @@ async def process_bill_end_to_end(
     except Exception as exc:
         logger.error("Error during end-to-end bill processing: %s", str(exc), exc_info=True)
         return error_response(status.HTTP_500_INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", str(exc))
+
+
+@app.post(
+    "/api/expense/categorize",
+    response_model=ExpenseCategorizeResponse,
+    responses={
+        200: {"description": "Expense categorized successfully"},
+        400: {"description": "Missing description, invalid amount, or validation error"},
+        500: {"description": "LLM categorization or internal server error"},
+        502: {"description": "LLM provider communication error"},
+        503: {"description": "LLM API keys not configured"},
+    },
+)
+async def categorize_expense(payload: ExpenseCategorizeRequest):
+    """
+    Categorize an expense description into canonical categories with confidence level
+    using LangChain + LLM provider router.
+    """
+    if not payload.description or not payload.description.strip():
+        return error_response(
+            status.HTTP_400_BAD_REQUEST,
+            "EMPTY_DESCRIPTION",
+            "Expense description must not be empty.",
+        )
+
+    try:
+        categorizer = get_expense_categorizer_service()
+        result = await categorizer.categorize_expense(
+            description=payload.description,
+            amount=payload.amount,
+            merchant=payload.merchant,
+        )
+        return {
+            "success": True,
+            "data": result.model_dump(),
+        }
+    except ExpenseCategorizationConfigError as cfg_err:
+        return error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            cfg_err.code,
+            cfg_err.message,
+        )
+    except ExpenseCategorizationAPIError as api_err:
+        return error_response(
+            status.HTTP_502_BAD_GATEWAY,
+            api_err.code,
+            api_err.message,
+        )
+    except ExpenseCategorizationValidationError as val_err:
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            val_err.code,
+            val_err.message,
+        )
+    except ValueError as val_err:
+        return error_response(
+            status.HTTP_400_BAD_REQUEST,
+            "INVALID_REQUEST",
+            str(val_err),
+        )
+    except Exception as exc:
+        logger.error("Unhandled error during expense categorization: %s", str(exc), exc_info=True)
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred while categorizing the expense.",
+        )
+

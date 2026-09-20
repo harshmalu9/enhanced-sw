@@ -9,7 +9,7 @@ from services.llm.exceptions import LLMConfigurationError
 class GroqProvider(BaseLLMProvider):
     """Groq provider implementation via LangChain."""
 
-    DEFAULT_MODEL = "llama-3.3-70b-versatile"
+    DEFAULT_MODEL = "openai/gpt-oss-20b"
 
     def __init__(self, api_key: Optional[str] = None, model: Optional[str] = None):
         super().__init__(name="groq", api_key=api_key, model=model)
@@ -32,6 +32,7 @@ class GroqProvider(BaseLLMProvider):
             model=model_name,
             groq_api_key=key,
             temperature=temperature,
+            max_retries=1,
         )
 
         return (

@@ -1,6 +1,7 @@
 import express, { type Application, type Request, type Response } from "express";
 import cors from "cors";
 import billRoutes from "./routes/bill.routes.js";
+import expenseRoutes from "./routes/expense.routes.js";
 
 const app: Application = express();
 
@@ -23,5 +24,6 @@ app.get("/api/health", (_req: Request, res: Response) => {
 });
 
 app.use("/api/bill", billRoutes);
+app.use("/api/expenses", expenseRoutes);
 
 export default app;

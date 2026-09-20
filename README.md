@@ -322,6 +322,31 @@ uvicorn app:app --reload --port 8000
    - `POST /api/bill/process`
    - Accepts multipart form data with image `file`, JSON string array `people`, and `instruction` string, executing OCR -> Parse -> Assign -> Split in a single coordinated request.
 
+7. **Automatic Expense Categorization**:
+   - `POST /api/expense/categorize` (AI Service) / `POST /api/expenses/categorize` (Backend Proxy)
+   - Categorizes an expense description into canonical categories with high/medium/low confidence using multi-provider LLM fallback.
+   - **Canonical Categories**: `Food & Dining`, `Transportation`, `Shopping`, `Entertainment`, `Bills & Utilities`, `Healthcare`, `Education`, `Travel`, `Groceries`, `Personal Care`, `Other`.
+   - **Example Request**:
+     ```bash
+     curl -X POST http://localhost:8000/api/expense/categorize \
+       -H "Content-Type: application/json" \
+       -d '{
+         "description": "Uber ride from college to home",
+         "amount": 450,
+         "merchant": "Uber"
+       }'
+     ```
+   - **Example Response**:
+     ```json
+     {
+       "success": true,
+       "data": {
+         "category": "Transportation",
+         "confidence": "high"
+       }
+     }
+     ```
+
 ---
 
 ## AI & Mathematical Architecture

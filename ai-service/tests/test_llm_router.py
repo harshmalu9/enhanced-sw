@@ -63,10 +63,15 @@ def test_groq_provider_configuration():
     provider_no_key = GroqProvider(api_key="")
     assert not provider_no_key.is_configured()
     assert provider_no_key.name == "groq"
+    assert provider_no_key.DEFAULT_MODEL == "openai/gpt-oss-20b"
 
-    provider_with_key = GroqProvider(api_key="valid-key", model="llama-3.1-8b-instant")
-    assert provider_with_key.is_configured()
-    assert provider_with_key.model == "llama-3.1-8b-instant"
+    provider_default = GroqProvider(api_key="valid-key")
+    assert provider_default.is_configured()
+    assert provider_default.DEFAULT_MODEL == "openai/gpt-oss-20b"
+
+    provider_custom = GroqProvider(api_key="valid-key", model="openai/gpt-oss-20b")
+    assert provider_custom.is_configured()
+    assert provider_custom.model == "openai/gpt-oss-20b"
 
 
 # ==========================================

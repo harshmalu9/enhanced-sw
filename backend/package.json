@@ -2,6 +2,7 @@
   "name": "enhanced-sw-backend",
   "version": "0.1.0",
   "description": "Backend API for Enhanced SW",
+  "type": "module",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
@@ -9,7 +10,8 @@
     "start": "node dist/server.js",
     "test": "tsx --test src/**/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "db:migrate": "tsx src/db/migrate.ts"
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "tsx src/db/seed.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

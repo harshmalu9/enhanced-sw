@@ -1,25 +1,19 @@
 import { Router, type Request, type Response } from "express";
 import { expenseRepository } from "../services/expense.repository.js";
 
-const router = Router();
+const router: Router = Router();
 
 const getAiServiceUrl = () => {
   return process.env.AI_SERVICE_URL || "http://localhost:8000";
 };
 
-async function forwardToPythonInsights(
-  expenses: Array<{
-    description: string;
-    amount: number;
-    category: string;
-    merchant?: string | null;
-    date?: string | null;
-  }>,
-  period?: { start?: string; end?: string },
+async function forwardToPython(
+  endpoint: string,
+  payload: any,
   res?: Response
 ): Promise<any> {
   const aiServiceUrl = getAiServiceUrl();
-  const targetUrl = `${aiServiceUrl}/api/spending/insights`;
+  const targetUrl = `${aiServiceUrl}${endpoint}`;
 
   let aiResponse: globalThis.Response;
   try {
@@ -28,13 +22,10 @@ async function forwardToPythonInsights(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        expenses,
-        period,
-      }),
+      body: JSON.stringify(payload),
     });
   } catch (networkError: unknown) {
-    console.error("Failed to connect to AI service at", targetUrl, networkError);
+    console.error(`Failed to connect to AI service at ${targetUrl}:`, networkError);
     if (res) {
       res.status(503).json({
         success: false,
@@ -85,10 +76,7 @@ router.get("/insights", async (req: Request, res: Response): Promise<void> => {
       periodObj = { start: startOfMonth, end: today };
     }
 
-    // 1. Fetch expenses from PostgreSQL
     const storedExpenses = await expenseRepository.findAll();
-
-    // 2. Format expenses for Python AI service
     const formattedExpenses = storedExpenses.map((e) => ({
       description: e.description,
       amount: e.amount,
@@ -97,8 +85,7 @@ router.get("/insights", async (req: Request, res: Response): Promise<void> => {
       date: e.date,
     }));
 
-    // 3. Forward to Python AI service
-    await forwardToPythonInsights(formattedExpenses, periodObj, res);
+    await forwardToPython("/api/spending/insights", { expenses: formattedExpenses, period: periodObj }, res);
   } catch (err: unknown) {
     console.error("Error in GET /api/spending/insights:", err);
     res.status(500).json({
@@ -113,13 +100,11 @@ router.get("/insights", async (req: Request, res: Response): Promise<void> => {
 
 /**
  * POST /api/spending/insights
- * Allows custom expense payload or fallback to database expenses.
  */
 router.post("/insights", async (req: Request, res: Response): Promise<void> => {
   try {
     const { expenses, period } = req.body || {};
 
-    // If explicit expenses array provided, validate and forward
     if (expenses !== undefined) {
       if (!Array.isArray(expenses)) {
         res.status(400).json({
@@ -180,11 +165,10 @@ router.post("/insights", async (req: Request, res: Response): Promise<void> => {
         }
       }
 
-      await forwardToPythonInsights(expenses, period, res);
+      await forwardToPython("/api/spending/insights", { expenses, period }, res);
       return;
     }
 
-    // If expenses not provided in body, load from database
     const storedExpenses = await expenseRepository.findAll();
     const formattedExpenses = storedExpenses.map((e) => ({
       description: e.description,
@@ -194,7 +178,7 @@ router.post("/insights", async (req: Request, res: Response): Promise<void> => {
       date: e.date,
     }));
 
-    await forwardToPythonInsights(formattedExpenses, period, res);
+    await forwardToPython("/api/spending/insights", { expenses: formattedExpenses, period }, res);
   } catch (err: unknown) {
     console.error("Unexpected error in POST /api/spending/insights proxy:", err);
     res.status(500).json({
@@ -202,6 +186,153 @@ router.post("/insights", async (req: Request, res: Response): Promise<void> => {
       error: {
         code: "INTERNAL_SERVER_ERROR",
         message: "An unexpected error occurred while generating spending insights.",
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/spending/anomalies
+ * Detects statistical anomalies in persisted PostgreSQL expenses.
+ */
+router.get("/anomalies", async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const storedExpenses = await expenseRepository.findAll();
+    const formatted = storedExpenses.map((e) => ({
+      id: e.id,
+      description: e.description,
+      amount: e.amount,
+      category: e.category,
+      merchant: e.merchant || undefined,
+      expense_date: e.date,
+    }));
+
+    await forwardToPython("/api/spending/anomalies", { expenses: formatted }, res);
+  } catch (err: unknown) {
+    console.error("Error in GET /api/spending/anomalies:", err);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to perform anomaly detection.",
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/spending/anomalies
+ */
+router.post("/anomalies", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { expenses, sensitivity_factor } = req.body || {};
+    if (expenses !== undefined && !Array.isArray(expenses)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_EXPENSES",
+          message: "'expenses' field must be an array.",
+        },
+      });
+      return;
+    }
+
+    let payloadExpenses = expenses;
+    if (!payloadExpenses) {
+      const storedExpenses = await expenseRepository.findAll();
+      payloadExpenses = storedExpenses.map((e) => ({
+        id: e.id,
+        description: e.description,
+        amount: e.amount,
+        category: e.category,
+        merchant: e.merchant || undefined,
+        expense_date: e.date,
+      }));
+    }
+
+    await forwardToPython(
+      "/api/spending/anomalies",
+      { expenses: payloadExpenses, sensitivity_factor },
+      res
+    );
+  } catch (err: unknown) {
+    console.error("Error in POST /api/spending/anomalies:", err);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to perform anomaly detection.",
+      },
+    });
+  }
+});
+
+/**
+ * GET /api/spending/forecast
+ * Forecasts future spending trajectory using persisted PostgreSQL expenses.
+ */
+router.get("/forecast", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const horizonParam = req.query.horizon ? parseInt(req.query.horizon as string, 10) : 14;
+    const storedExpenses = await expenseRepository.findAll();
+    const formatted = storedExpenses.map((e) => ({
+      id: e.id,
+      description: e.description,
+      amount: e.amount,
+      category: e.category,
+      expense_date: e.date,
+    }));
+
+    await forwardToPython("/api/spending/forecast", { expenses: formatted, horizon_days: horizonParam }, res);
+  } catch (err: unknown) {
+    console.error("Error in GET /api/spending/forecast:", err);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to generate spending forecast.",
+      },
+    });
+  }
+});
+
+/**
+ * POST /api/spending/forecast
+ */
+router.post("/forecast", async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { expenses, horizon_days } = req.body || {};
+    if (expenses !== undefined && !Array.isArray(expenses)) {
+      res.status(400).json({
+        success: false,
+        error: {
+          code: "INVALID_EXPENSES",
+          message: "'expenses' field must be an array.",
+        },
+      });
+      return;
+    }
+
+    let payloadExpenses = expenses;
+    if (!payloadExpenses) {
+      const storedExpenses = await expenseRepository.findAll();
+      payloadExpenses = storedExpenses.map((e) => ({
+        id: e.id,
+        description: e.description,
+        amount: e.amount,
+        category: e.category,
+        expense_date: e.date,
+      }));
+    }
+
+    await forwardToPython("/api/spending/forecast", { expenses: payloadExpenses, horizon_days }, res);
+  } catch (err: unknown) {
+    console.error("Error in POST /api/spending/forecast:", err);
+    res.status(500).json({
+      success: false,
+      error: {
+        code: "INTERNAL_SERVER_ERROR",
+        message: "Failed to generate spending forecast.",
       },
     });
   }

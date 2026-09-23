@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -15,24 +16,26 @@ import {
   SafeAreaView,
 } from "react-native-safe-area-context";
 import { Header } from "./components/Header";
+import { DashboardView } from "./components/DashboardView";
 import { ReceiptUploader } from "./components/ReceiptUploader";
 import { ParticipantInput } from "./components/ParticipantInput";
 import { InstructionInput } from "./components/InstructionInput";
 import { SplitResultView } from "./components/SplitResultView";
 import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingOverlay } from "./components/LoadingOverlay";
-import { ExpenseCategorizer } from "./components/ExpenseCategorizer";
-import { SpendingInsightsView } from "./components/SpendingInsightsView";
 import { AddExpenseView } from "./components/AddExpenseView";
 import { ExpenseHistoryView } from "./components/ExpenseHistoryView";
-import { processBill, ApiError } from "./services/api";
+import { SpendingInsightsView } from "./components/SpendingInsightsView";
+import { BudgetView } from "./components/BudgetView";
+import { GroupSettlementView } from "./components/GroupSettlementView";
+import { processBill, seedDemoData, ApiError } from "./services/api";
 import {
   BillSplitResult,
   BillValidationResult,
   ReceiptFile,
 } from "./types/bill";
 
-type ActiveTab = "split" | "add" | "history" | "insights";
+type ActiveTab = "home" | "split" | "add" | "history" | "insights" | "budget" | "settlement";
 type Stage = "upload" | "details" | "result";
 
 export default function App() {
@@ -44,13 +47,14 @@ export default function App() {
 }
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("split");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("home");
   const [stage, setStage] = useState<Stage>("upload");
   const [receipt, setReceipt] = useState<ReceiptFile | null>(null);
   const [people, setPeople] = useState<string[]>([]);
   const [isEqualSplit, setIsEqualSplit] = useState<boolean>(false);
   const [instruction, setInstruction] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSeeding, setIsSeeding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [splitResult, setSplitResult] = useState<BillSplitResult | null>(null);
   const [validation, setValidation] = useState<BillValidationResult | null>(null);
@@ -136,19 +140,53 @@ function MainApp() {
     setError(null);
   };
 
+  const handleLoadDemoData = async () => {
+    setIsSeeding(true);
+    try {
+      const res = await seedDemoData();
+      Alert.alert(
+        "Demo Data Loaded",
+        `Successfully populated database with ${res.expensesCount} realistic transactions and monthly budget for demonstration.`,
+        [
+          {
+            text: "View Insights",
+            onPress: () => setActiveTab("insights"),
+          },
+          {
+            text: "View Home",
+            onPress: () => setActiveTab("home"),
+          },
+        ]
+      );
+    } catch (err: unknown) {
+      Alert.alert(
+        "Seeding Error",
+        err instanceof Error ? err.message : "Failed to load demo data."
+      );
+    } finally {
+      setIsSeeding(false);
+    }
+  };
+
   const isCalculateDisabled =
     people.length < 2 || (!isEqualSplit && !instruction.trim()) || isLoading;
 
   const getHeaderSubtitle = () => {
     switch (activeTab) {
+      case "home":
+        return "Personal & Group Expense Intelligence";
       case "split":
-        return "Intelligent Bill Split";
+        return "Receipt OCR & Intelligent Bill Split";
       case "add":
         return "Add & Auto-Categorize Expense";
       case "history":
         return "Persistent Expense History";
       case "insights":
-        return "AI-Powered Spending Insights";
+        return "Insights, Prophet Forecast & Anomalies";
+      case "budget":
+        return "Monthly & Category Budget Tracking";
+      case "settlement":
+        return "Multi-Payer Debt Simplification";
     }
   };
 
@@ -160,79 +198,124 @@ function MainApp() {
         style={styles.container}
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <Header subtitle={getHeaderSubtitle()} />
+        <Header
+          subtitle={getHeaderSubtitle()}
+          onLoadDemoData={handleLoadDemoData}
+          isSeeding={isSeeding}
+        />
 
-        {/* Tab Navigation */}
+        {/* Tab Navigation Scrollable Bar */}
         <View style={styles.tabContainer}>
-          <TouchableOpacity
-            style={[styles.tabButton, activeTab === "split" && styles.tabButtonActive]}
-            onPress={() => setActiveTab("split")}
-            activeOpacity={0.7}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabScrollContent}
           >
-            <Text
-              style={[
-                styles.tabButtonText,
-                activeTab === "split" && styles.tabButtonTextActive,
-              ]}
-              numberOfLines={1}
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "home" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("home")}
+              activeOpacity={0.7}
             >
-              🧾 Split Bill
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === "add" && styles.tabButtonActive,
-            ]}
-            onPress={() => setActiveTab("add")}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.tabButtonText,
-                activeTab === "add" && styles.tabButtonTextActive,
-              ]}
-              numberOfLines={1}
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "home" && styles.tabButtonTextActive,
+                ]}
+              >
+                🏠 Home
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "split" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("split")}
+              activeOpacity={0.7}
             >
-              ➕ Add
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === "history" && styles.tabButtonActive,
-            ]}
-            onPress={() => setActiveTab("history")}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.tabButtonText,
-                activeTab === "history" && styles.tabButtonTextActive,
-              ]}
-              numberOfLines={1}
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "split" && styles.tabButtonTextActive,
+                ]}
+              >
+                🧾 Split Bill
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "add" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("add")}
+              activeOpacity={0.7}
             >
-              📋 History
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === "insights" && styles.tabButtonActive,
-            ]}
-            onPress={() => setActiveTab("insights")}
-            activeOpacity={0.7}
-          >
-            <Text
-              style={[
-                styles.tabButtonText,
-                activeTab === "insights" && styles.tabButtonTextActive,
-              ]}
-              numberOfLines={1}
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "add" && styles.tabButtonTextActive,
+                ]}
+              >
+                ➕ Add
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("history")}
+              activeOpacity={0.7}
             >
-              💡 Insights
-            </Text>
-          </TouchableOpacity>
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "history" && styles.tabButtonTextActive,
+                ]}
+              >
+                📋 History
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "insights" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("insights")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "insights" && styles.tabButtonTextActive,
+                ]}
+              >
+                💡 Insights
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "budget" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("budget")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "budget" && styles.tabButtonTextActive,
+                ]}
+              >
+                🎯 Budget
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.tabButton, activeTab === "settlement" && styles.tabButtonActive]}
+              onPress={() => setActiveTab("settlement")}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === "settlement" && styles.tabButtonTextActive,
+                ]}
+              >
+                🤝 Settlement
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
 
         <ScrollView
@@ -241,8 +324,14 @@ function MainApp() {
           keyboardShouldPersistTaps="handled"
           automaticallyAdjustKeyboardInsets={true}
         >
-          {activeTab === "insights" ? (
+          {activeTab === "home" ? (
+            <DashboardView onNavigate={(tab) => setActiveTab(tab)} />
+          ) : activeTab === "insights" ? (
             <SpendingInsightsView onNavigateToAdd={() => setActiveTab("add")} />
+          ) : activeTab === "budget" ? (
+            <BudgetView onNavigateToAdd={() => setActiveTab("add")} />
+          ) : activeTab === "settlement" ? (
+            <GroupSettlementView />
           ) : activeTab === "history" ? (
             <ExpenseHistoryView onNavigateToAdd={() => setActiveTab("add")} />
           ) : activeTab === "add" ? (
@@ -383,19 +472,22 @@ const styles = StyleSheet.create({
     backgroundColor: "#f8fafc",
   },
   tabContainer: {
-    flexDirection: "row",
     backgroundColor: "#f1f5f9",
-    padding: 4,
-    marginHorizontal: 16,
-    marginTop: 10,
+    paddingVertical: 4,
+    marginHorizontal: 12,
+    marginTop: 8,
     marginBottom: 4,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: "#e2e8f0",
   },
+  tabScrollContent: {
+    paddingHorizontal: 4,
+    gap: 4,
+  },
   tabButton: {
-    flex: 1,
-    paddingVertical: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     alignItems: "center",
     borderRadius: 8,
   },

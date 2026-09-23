@@ -364,5 +364,273 @@ export async function getSpendingInsights(params?: {
   }
 }
 
+export async function getBudgetStatus(
+  month?: string
+): Promise<import("../types/budget").BudgetStatus | null> {
+  const url = month
+    ? `${API_BASE_URL}/api/budgets/${month}`
+    : `${API_BASE_URL}/api/budgets/current`;
+
+  try {
+    const res = await fetch(url, { method: "GET" });
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (res.status === 404) {
+      return null;
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to retrieve budget status.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data.data;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function setBudget(
+  payload: import("../types/budget").UpsertBudgetPayload
+): Promise<import("../types/budget").BudgetStatus> {
+  const url = `${API_BASE_URL}/api/budgets`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to save budget.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data.data.status;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function deleteBudget(month: string): Promise<boolean> {
+  const url = `${API_BASE_URL}/api/budgets/${month}`;
+
+  try {
+    const res = await fetch(url, { method: "DELETE" });
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to delete budget.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return true;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function detectAnomalies(
+  sensitivity = 2.0
+): Promise<import("../types/anomaly").AnomalyDetectionResponse> {
+  const url = `${API_BASE_URL}/api/spending/anomalies`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sensitivity_factor: sensitivity }),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to detect anomalies.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data as import("../types/anomaly").AnomalyDetectionResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function getSpendingForecast(
+  horizonDays = 14
+): Promise<import("../types/forecast").SpendingForecastResponse> {
+  const url = `${API_BASE_URL}/api/spending/forecast?horizon=${horizonDays}`;
+
+  try {
+    const res = await fetch(url, { method: "GET" });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to generate spending forecast.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data as import("../types/forecast").SpendingForecastResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function simplifyDebts(
+  payload: import("../types/settlement").GroupSettlementRequest
+): Promise<import("../types/settlement").GroupSettlementResponse> {
+  const url = `${API_BASE_URL}/api/settlement/simplify`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to calculate debt settlement.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data as import("../types/settlement").GroupSettlementResponse;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function seedDemoData(): Promise<{
+  expensesCount: number;
+  budgetsCount: number;
+  message: string;
+}> {
+  const url = `${API_BASE_URL}/api/dev/seed`;
+
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received invalid response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to load demo data.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return {
+      expensesCount: data.data.expensesCount,
+      budgetsCount: data.data.budgetsCount,
+      message: data.message,
+    };
+  } catch (err: unknown) {
+    if (err instanceof ApiError) throw err;
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
 export { API_BASE_URL };
 

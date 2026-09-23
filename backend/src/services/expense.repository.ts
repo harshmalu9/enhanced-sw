@@ -106,3 +106,6 @@ export class ExpenseRepository {
 }
 
 export const expenseRepository = new ExpenseRepository();
+export function getExpenseRepository(): ExpenseRepository {
+  return expenseRepository;
+}

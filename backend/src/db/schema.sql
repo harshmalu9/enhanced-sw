@@ -26,3 +26,15 @@ CREATE TABLE IF NOT EXISTS expenses (
 
 CREATE INDEX IF NOT EXISTS idx_expenses_date ON expenses(expense_date DESC);
 CREATE INDEX IF NOT EXISTS idx_expenses_created_at ON expenses(created_at DESC);
+
+-- Table: budgets
+CREATE TABLE IF NOT EXISTS budgets (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    month_year VARCHAR(7) NOT NULL UNIQUE, -- format: 'YYYY-MM'
+    monthly_budget NUMERIC(12, 2) NOT NULL CHECK (monthly_budget >= 0),
+    category_budgets JSONB NOT NULL DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_budgets_month_year ON budgets(month_year);

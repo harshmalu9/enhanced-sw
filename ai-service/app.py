@@ -51,6 +51,21 @@ from services.spending import (
     SpendingInsightsValidationError,
     get_spending_insights_service,
 )
+from services.anomaly import (
+    AnomalyDetectionRequest,
+    AnomalyDetectionResponse,
+    get_anomaly_detector_service,
+)
+from services.settlement import (
+    GroupSettlementRequest,
+    GroupSettlementResponse,
+    get_debt_settlement_service,
+)
+from services.forecast import (
+    SpendingForecastRequest,
+    SpendingForecastResponse,
+    get_spending_forecaster_service,
+)
 from services.ocr_service import get_ocr_service
 
 # Load environment variables from .env if present
@@ -688,6 +703,90 @@ async def get_spending_insights(payload: SpendingInsightsRequest):
             status.HTTP_500_INTERNAL_SERVER_ERROR,
             "INTERNAL_SERVER_ERROR",
             "An unexpected error occurred while generating spending insights.",
+        )
+
+
+@app.post(
+    "/api/spending/anomalies",
+    response_model=AnomalyDetectionResponse,
+    responses={
+        200: {"description": "Anomalies analyzed successfully"},
+        400: {"description": "Invalid expense payload"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def detect_spending_anomalies(payload: AnomalyDetectionRequest):
+    """
+    Perform statistical, explainable anomaly detection on expense history.
+    """
+    try:
+        service = get_anomaly_detector_service()
+        result = service.detect_anomalies(payload)
+        return result
+    except ValueError as val_err:
+        return error_response(status.HTTP_400_BAD_REQUEST, "INVALID_REQUEST", str(val_err))
+    except Exception as exc:
+        logger.error("Error during anomaly detection: %s", str(exc), exc_info=True)
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred during anomaly detection.",
+        )
+
+
+@app.post(
+    "/api/settlement/simplify",
+    response_model=GroupSettlementResponse,
+    responses={
+        200: {"description": "Debts simplified successfully"},
+        400: {"description": "Invalid participants or payment payload"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def simplify_group_debts(payload: GroupSettlementRequest):
+    """
+    Calculate net balances and minimal cash-flow transfers for group expenses.
+    """
+    try:
+        service = get_debt_settlement_service()
+        result = service.simplify_debts(payload)
+        return result
+    except ValueError as val_err:
+        return error_response(status.HTTP_400_BAD_REQUEST, "INVALID_REQUEST", str(val_err))
+    except Exception as exc:
+        logger.error("Error during debt simplification: %s", str(exc), exc_info=True)
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred during debt simplification.",
+        )
+
+
+@app.post(
+    "/api/spending/forecast",
+    response_model=SpendingForecastResponse,
+    responses={
+        200: {"description": "Spending forecast generated successfully"},
+        400: {"description": "Invalid forecast payload"},
+        500: {"description": "Internal server error"},
+    },
+)
+async def forecast_spending(payload: SpendingForecastRequest):
+    """
+    Generate deterministic time-series spending forecast with trend and day-of-week seasonality.
+    """
+    try:
+        service = get_spending_forecaster_service()
+        result = service.forecast_spending(payload)
+        return result
+    except ValueError as val_err:
+        return error_response(status.HTTP_400_BAD_REQUEST, "INVALID_REQUEST", str(val_err))
+    except Exception as exc:
+        logger.error("Error during spending forecasting: %s", str(exc), exc_info=True)
+        return error_response(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "INTERNAL_SERVER_ERROR",
+            "An unexpected error occurred during spending forecasting.",
         )
 
 

@@ -23,6 +23,8 @@ import { ErrorBanner } from "./components/ErrorBanner";
 import { LoadingOverlay } from "./components/LoadingOverlay";
 import { ExpenseCategorizer } from "./components/ExpenseCategorizer";
 import { SpendingInsightsView } from "./components/SpendingInsightsView";
+import { AddExpenseView } from "./components/AddExpenseView";
+import { ExpenseHistoryView } from "./components/ExpenseHistoryView";
 import { processBill, ApiError } from "./services/api";
 import {
   BillSplitResult,
@@ -30,7 +32,7 @@ import {
   ReceiptFile,
 } from "./types/bill";
 
-type ActiveTab = "split" | "categorize" | "insights";
+type ActiveTab = "split" | "add" | "history" | "insights";
 type Stage = "upload" | "details" | "result";
 
 export default function App() {
@@ -141,8 +143,10 @@ function MainApp() {
     switch (activeTab) {
       case "split":
         return "Intelligent Bill Split";
-      case "categorize":
-        return "Automatic Expense Categorization";
+      case "add":
+        return "Add & Auto-Categorize Expense";
+      case "history":
+        return "Persistent Expense History";
       case "insights":
         return "AI-Powered Spending Insights";
     }
@@ -172,25 +176,43 @@ function MainApp() {
               ]}
               numberOfLines={1}
             >
-              🧾 Splitter
+              🧾 Split Bill
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[
               styles.tabButton,
-              activeTab === "categorize" && styles.tabButtonActive,
+              activeTab === "add" && styles.tabButtonActive,
             ]}
-            onPress={() => setActiveTab("categorize")}
+            onPress={() => setActiveTab("add")}
             activeOpacity={0.7}
           >
             <Text
               style={[
                 styles.tabButtonText,
-                activeTab === "categorize" && styles.tabButtonTextActive,
+                activeTab === "add" && styles.tabButtonTextActive,
               ]}
               numberOfLines={1}
             >
-              🏷 Categorize
+              ➕ Add
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === "history" && styles.tabButtonActive,
+            ]}
+            onPress={() => setActiveTab("history")}
+            activeOpacity={0.7}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === "history" && styles.tabButtonTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              📋 History
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
@@ -220,9 +242,11 @@ function MainApp() {
           automaticallyAdjustKeyboardInsets={true}
         >
           {activeTab === "insights" ? (
-            <SpendingInsightsView />
-          ) : activeTab === "categorize" ? (
-            <ExpenseCategorizer />
+            <SpendingInsightsView onNavigateToAdd={() => setActiveTab("add")} />
+          ) : activeTab === "history" ? (
+            <ExpenseHistoryView onNavigateToAdd={() => setActiveTab("add")} />
+          ) : activeTab === "add" ? (
+            <AddExpenseView onExpenseSaved={() => setActiveTab("history")} />
           ) : (
             <>
               <ErrorBanner

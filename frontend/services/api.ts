@@ -145,7 +145,7 @@ export async function categorizeExpense({
   description,
   amount,
   merchant,
-}: ExpenseCategorizeParams): Promise<ExpenseCategorizeResponse> {
+}: import("../types/expense").ExpenseCategorizeParams): Promise<import("../types/expense").ExpenseCategorizeResponse> {
   const url = `${API_BASE_URL}/api/expenses/categorize`;
 
   try {
@@ -178,7 +178,7 @@ export async function categorizeExpense({
       throw new ApiError(errorCode, errorMessage, res.status);
     }
 
-    return data as ExpenseCategorizeResponse;
+    return data as import("../types/expense").ExpenseCategorizeResponse;
   } catch (err: unknown) {
     if (err instanceof ApiError) {
       throw err;
@@ -190,14 +190,11 @@ export async function categorizeExpense({
   }
 }
 
-export async function getSpendingInsights({
-  expenses,
-  period,
-}: {
-  expenses: ExpenseInput[];
-  period?: PeriodInput;
-}): Promise<SpendingInsightsResponse> {
-  const url = `${API_BASE_URL}/api/spending/insights`;
+export async function createExpense(
+  params: import("../types/expense").CreateExpenseParams
+): Promise<import("../types/expense").CreateExpenseResponse> {
+
+  const url = `${API_BASE_URL}/api/expenses`;
 
   try {
     const res = await fetch(url, {
@@ -205,11 +202,138 @@ export async function getSpendingInsights({
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        expenses,
-        period,
-      }),
+      body: JSON.stringify(params),
     });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received an invalid non-JSON response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to create expense.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function getExpenses(): Promise<import("../types/expense").ListExpensesResponse> {
+  const url = `${API_BASE_URL}/api/expenses`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received an invalid non-JSON response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to retrieve expenses.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function deleteExpense(
+  id: string
+): Promise<import("../types/expense").DeleteExpenseResponse> {
+  const url = `${API_BASE_URL}/api/expenses/${id}`;
+
+  try {
+    const res = await fetch(url, {
+      method: "DELETE",
+    });
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch {
+      throw new ApiError(
+        "INVALID_RESPONSE",
+        "Received an invalid non-JSON response from server.",
+        res.status
+      );
+    }
+
+    if (!res.ok || !data.success) {
+      const errorCode = data?.error?.code || `HTTP_${res.status}`;
+      const errorMessage = data?.error?.message || "Failed to delete expense.";
+      throw new ApiError(errorCode, errorMessage, res.status);
+    }
+
+    return data;
+  } catch (err: unknown) {
+    if (err instanceof ApiError) {
+      throw err;
+    }
+    throw new ApiError(
+      "NETWORK_ERROR",
+      `Could not connect to backend at ${API_BASE_URL}. Ensure the backend is running.`
+    );
+  }
+}
+
+export async function getSpendingInsights(params?: {
+  expenses?: ExpenseInput[];
+  period?: PeriodInput;
+}): Promise<SpendingInsightsResponse> {
+  const url = `${API_BASE_URL}/api/spending/insights`;
+
+  try {
+    let res: globalThis.Response;
+    if (params?.expenses && params.expenses.length > 0) {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          expenses: params.expenses,
+          period: params.period,
+        }),
+      });
+    } else {
+      res = await fetch(url, {
+        method: "GET",
+      });
+    }
 
     let data: any;
     try {
@@ -241,3 +365,4 @@ export async function getSpendingInsights({
 }
 
 export { API_BASE_URL };
+

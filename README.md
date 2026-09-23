@@ -405,6 +405,40 @@ uvicorn app:app --reload --port 8000
      }
      ```
 
+9. **Persistent Expenses & Spending Insights**:
+   - `POST /api/expenses` (Backend): Creates and persists a new expense record in PostgreSQL. If `category` is omitted, automatically classifies the description via the AI service before persisting.
+   - `GET /api/expenses` (Backend): Retrieves all persisted expenses ordered newest first.
+   - `GET /api/expenses/:id` (Backend): Retrieves a single expense record by UUID.
+   - `DELETE /api/expenses/:id` (Backend): Deletes an expense record by UUID.
+   - `GET /api/spending/insights` (Backend): Queries all persisted expenses from PostgreSQL and requests deterministic summary + AI insights from the AI service.
+
+---
+
+## Database Configuration (PostgreSQL)
+
+Enhanced SW uses PostgreSQL for persistent expense storage.
+
+### Setup Instructions
+
+1. **Create PostgreSQL User & Database**:
+   ```bash
+   sudo -u postgres psql -c "CREATE USER enhanced_sw_user WITH PASSWORD 'enhanced_sw_password';"
+   sudo -u postgres psql -c "CREATE DATABASE enhanced_sw OWNER enhanced_sw_user;"
+   sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE enhanced_sw TO enhanced_sw_user;"
+   ```
+
+2. **Configure Database Connection**:
+   Set `DATABASE_URL` in `backend/.env` (defaults to `postgresql://enhanced_sw_user:enhanced_sw_password@localhost:5432/enhanced_sw` if omitted):
+   ```env
+   DATABASE_URL=postgresql://enhanced_sw_user:enhanced_sw_password@localhost:5432/enhanced_sw
+   ```
+
+3. **Run Migrations**:
+   ```bash
+   cd backend
+   npm run db:migrate
+   ```
+
 ---
 
 ## AI & Mathematical Architecture
@@ -412,18 +446,28 @@ uvicorn app:app --reload --port 8000
 ### Core Design Principle
 > **LLM interprets natural language; deterministic code performs monetary calculations.**
 
-- **AI Responsibilities**: Messy OCR text understanding, line item extraction, natural language consumption resolution, participant matching, and ambiguity detection.
-- **Deterministic Responsibilities**: Split fractions, tax/discount proportional allocation, Python `Decimal` fixed-point arithmetic (`ROUND_HALF_UP`), and exact paisa/cent remainder distribution so `sum(shares) == bill.total`.
+- **AI Responsibilities**: Messy OCR text understanding, line item extraction, natural language consumption resolution, participant matching, ambiguity detection, expense category classification, and qualitative spending observations.
+- **Deterministic Responsibilities**: Split fractions, tax/discount proportional allocation, Python `Decimal` fixed-point arithmetic (`ROUND_HALF_UP`), exact paisa/cent remainder distribution so `sum(shares) == bill.total`, and exact spending metrics aggregation.
 
 ---
 
 ## Testing
 
-Run unit and integration tests:
-
+Run AI Service tests:
 ```bash
 cd ai-service
 source .venv/bin/activate
 pytest -v
 ```
 
+Run Backend test suite:
+```bash
+cd backend
+npm test
+```
+
+Run Frontend type check:
+```bash
+cd frontend
+npm run typecheck
+```

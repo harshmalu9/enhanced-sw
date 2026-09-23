@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ActivityIndicator,
   StyleSheet,
@@ -7,71 +7,24 @@ import {
   View,
 } from "react-native";
 import { getSpendingInsights, ApiError } from "../services/api";
-import { ExpenseInput, SpendingInsightsDataResult } from "../types/spending";
+import { SpendingInsightsDataResult } from "../types/spending";
 import { ErrorBanner } from "./ErrorBanner";
 
-const SAMPLE_EXPENSES_DATASET: ExpenseInput[] = [
-  {
-    description: "Pizza with friends",
-    amount: 600,
-    category: "Food & Dining",
-    merchant: "Dominos",
-    date: "2026-09-20",
-  },
-  {
-    description: "Uber ride",
-    amount: 450,
-    category: "Transportation",
-    merchant: "Uber",
-    date: "2026-09-19",
-  },
-  {
-    description: "New shoes",
-    amount: 1500,
-    category: "Shopping",
-    merchant: "Nike",
-    date: "2026-09-18",
-  },
-  {
-    description: "Netflix subscription",
-    amount: 499,
-    category: "Entertainment",
-    merchant: "Netflix",
-    date: "2026-09-15",
-  },
-  {
-    description: "Supermarket groceries",
-    amount: 1200,
-    category: "Groceries",
-    merchant: "Reliance Fresh",
-    date: "2026-09-14",
-  },
-];
+interface SpendingInsightsViewProps {
+  onNavigateToAdd?: () => void;
+}
 
-export const SpendingInsightsView: React.FC = () => {
-  const [expenses, setExpenses] = useState<ExpenseInput[]>(SAMPLE_EXPENSES_DATASET);
-  const [isLoading, setIsLoading] = useState(false);
+export const SpendingInsightsView: React.FC<SpendingInsightsViewProps> = ({ onNavigateToAdd }) => {
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SpendingInsightsDataResult | null>(null);
 
-  const handleAnalyze = async () => {
-    if (!expenses || expenses.length === 0) {
-      setError("Please add at least one expense to analyze.");
-      return;
-    }
-
-    setError(null);
+  const fetchInsights = useCallback(async () => {
     setIsLoading(true);
+    setError(null);
 
     try {
-      const response = await getSpendingInsights({
-        expenses,
-        period: {
-          start: "2026-09-01",
-          end: "2026-09-20",
-        },
-      });
-
+      const response = await getSpendingInsights();
       setResult(response.data);
     } catch (err: unknown) {
       if (err instanceof ApiError) {
@@ -84,80 +37,61 @@ export const SpendingInsightsView: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const handleReset = () => {
-    setResult(null);
-    setError(null);
-  };
-
-  const handleLoadSample = (sample: ExpenseInput[]) => {
-    setExpenses(sample);
-    setResult(null);
-    setError(null);
-  };
+  useEffect(() => {
+    fetchInsights();
+  }, [fetchInsights]);
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Spending Insights</Text>
-      <Text style={styles.subtitle}>
-        Deterministic financial breakdown paired with AI-generated spending patterns.
-      </Text>
+      <View style={styles.headerRow}>
+        <View>
+          <Text style={styles.title}>Spending Insights</Text>
+          <Text style={styles.subtitle}>
+            Financial breakdown and AI analysis grounded in your stored expenses.
+          </Text>
+        </View>
+        <TouchableOpacity
+          style={styles.refreshButton}
+          onPress={fetchInsights}
+          disabled={isLoading}
+        >
+          <Text style={styles.refreshButtonText}>↻</Text>
+        </TouchableOpacity>
+      </View>
 
       <ErrorBanner
         message={error}
         onDismiss={() => setError(null)}
-        onRetry={handleAnalyze}
+        onRetry={fetchInsights}
       />
 
-      {/* Dataset Selection Controls */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Sample Expense Dataset</Text>
-        <Text style={styles.itemCountBadge}>{expenses.length} expenses</Text>
-      </View>
-
-      {/* Expense List Preview */}
-      <View style={styles.expensePreviewList}>
-        {expenses.map((item, idx) => (
-          <View key={idx} style={styles.expensePreviewRow}>
-            <View style={styles.expenseLeft}>
-              <Text style={styles.expenseDesc} numberOfLines={1}>
-                {item.description}
-              </Text>
-              <Text style={styles.expenseCategory}>{item.category}</Text>
-            </View>
-            <Text style={styles.expenseAmount}>₹{item.amount.toLocaleString()}</Text>
-          </View>
-        ))}
-      </View>
-
-      {/* Action Buttons */}
-      <TouchableOpacity
-        style={[styles.analyzeButton, isLoading && styles.buttonDisabled]}
-        onPress={handleAnalyze}
-        disabled={isLoading}
-        activeOpacity={0.8}
-      >
-        {isLoading ? (
-          <View style={styles.loadingRow}>
-            <ActivityIndicator size="small" color="#ffffff" />
-            <Text style={styles.buttonText}>Analyzing Spending...</Text>
-          </View>
-        ) : (
-          <Text style={styles.buttonText}>⚡ Generate Spending Insights</Text>
-        )}
-      </TouchableOpacity>
-
-      {/* Results Display */}
-      {result && (
-        <View style={styles.resultsContainer}>
-          <View style={styles.resultsHeader}>
-            <Text style={styles.resultsMainTitle}>Spending Summary</Text>
-            <TouchableOpacity onPress={handleReset} style={styles.clearBtn}>
-              <Text style={styles.clearBtnText}>Clear</Text>
+      {/* Loading State */}
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color="#2563eb" />
+          <Text style={styles.loadingText}>Analyzing persistent expenses with AI...</Text>
+        </View>
+      ) : !result || result.summary.expense_count === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyIcon}>💡</Text>
+          <Text style={styles.emptyTitle}>No expense data to analyze</Text>
+          <Text style={styles.emptySubtitle}>
+            Add some expenses or split a bill to generate AI spending insights and category breakdowns.
+          </Text>
+          {onNavigateToAdd && (
+            <TouchableOpacity
+              style={styles.addExpenseBtn}
+              onPress={onNavigateToAdd}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.addExpenseBtnText}>➕ Add an Expense</Text>
             </TouchableOpacity>
-          </View>
-
+          )}
+        </View>
+      ) : (
+        <View style={styles.resultsContainer}>
           {/* Metric Cards */}
           <View style={styles.metricsGrid}>
             <View style={styles.metricCard}>
@@ -171,12 +105,28 @@ export const SpendingInsightsView: React.FC = () => {
               <Text style={styles.metricValue}>{result.summary.expense_count}</Text>
             </View>
             <View style={styles.metricCard}>
-              <Text style={styles.metricLabel}>Average Expense</Text>
+              <Text style={styles.metricLabel}>Avg. Expense</Text>
               <Text style={styles.metricValue}>
                 ₹{result.summary.average_expense.toLocaleString(undefined, { minimumFractionDigits: 2 })}
               </Text>
             </View>
           </View>
+
+          {/* Highest Category Callout */}
+          {result.summary.highest_spending_category && (
+            <View style={styles.highestCard}>
+              <Text style={styles.highestLabel}>TOP SPENDING CATEGORY</Text>
+              <View style={styles.highestRow}>
+                <Text style={styles.highestCategory}>
+                  {result.summary.highest_spending_category.category}
+                </Text>
+                <Text style={styles.highestAmount}>
+                  ₹{result.summary.highest_spending_category.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}{" "}
+                  ({result.summary.highest_spending_category.percentage}%)
+                </Text>
+              </View>
+            </View>
+          )}
 
           {/* Category Breakdown */}
           <View style={styles.breakdownCard}>
@@ -201,7 +151,7 @@ export const SpendingInsightsView: React.FC = () => {
           {result.insights && result.insights.length > 0 && (
             <View style={styles.insightsCard}>
               <View style={styles.insightsHeader}>
-                <Text style={styles.insightsTitle}>💡 AI Insights</Text>
+                <Text style={styles.insightsTitle}>💡 AI Spending Observations</Text>
               </View>
               {result.insights.map((insight, idx) => (
                 <View key={idx} style={styles.insightItem}>
@@ -232,6 +182,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 2,
   },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    marginBottom: 12,
+  },
   title: {
     fontSize: 20,
     fontWeight: "800",
@@ -241,105 +197,68 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 13,
     color: "#64748b",
-    marginBottom: 16,
     lineHeight: 18,
+    maxWidth: 260,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  sectionTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#334155",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
-  },
-  itemCountBadge: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "600",
-  },
-  expensePreviewList: {
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    padding: 10,
-    marginBottom: 14,
-  },
-  expensePreviewRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 6,
-    borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
-  },
-  expenseLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  expenseDesc: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#0f172a",
-  },
-  expenseCategory: {
-    fontSize: 11,
-    color: "#64748b",
-    marginTop: 1,
-  },
-  expenseAmount: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  analyzeButton: {
-    backgroundColor: "#2563eb",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 6,
-  },
-  buttonDisabled: {
-    backgroundColor: "#94a3b8",
-    opacity: 0.6,
-  },
-  buttonText: {
-    color: "#ffffff",
-    fontSize: 15,
-    fontWeight: "700",
-  },
-  loadingRow: {
-    flexDirection: "row",
+  refreshButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#f1f5f9",
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  refreshButtonText: {
+    fontSize: 18,
+    color: "#475569",
+    fontWeight: "700",
+  },
+  loadingContainer: {
+    paddingVertical: 32,
+    alignItems: "center",
+    gap: 8,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: "#64748b",
+  },
+  emptyContainer: {
+    paddingVertical: 36,
+    alignItems: "center",
+    paddingHorizontal: 16,
+  },
+  emptyIcon: {
+    fontSize: 40,
+    marginBottom: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#0f172a",
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: "#64748b",
+    textAlign: "center",
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  addExpenseBtn: {
+    backgroundColor: "#2563eb",
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+  },
+  addExpenseBtnText: {
+    color: "#ffffff",
+    fontSize: 13,
+    fontWeight: "700",
   },
   resultsContainer: {
-    marginTop: 18,
-  },
-  resultsHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  resultsMainTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  clearBtn: {
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-  clearBtnText: {
-    fontSize: 12,
-    color: "#64748b",
-    fontWeight: "600",
+    marginTop: 6,
   },
   metricsGrid: {
     flexDirection: "row",
@@ -367,6 +286,37 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     color: "#0f172a",
     textAlign: "center",
+  },
+  highestCard: {
+    backgroundColor: "#eff6ff",
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 14,
+  },
+  highestLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: "#1d4ed8",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  highestRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  highestCategory: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#1e3a8a",
+  },
+  highestAmount: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#2563eb",
   },
   breakdownCard: {
     backgroundColor: "#f8fafc",

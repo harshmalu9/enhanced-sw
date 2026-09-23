@@ -215,4 +215,42 @@ describe("Backend API: /api/spending/insights", () => {
     assert.equal(data.success, false);
     assert.equal(data.error.code, "AI_SERVICE_UNAVAILABLE");
   });
+
+  it("should fetch persisted expenses from DB and return insights for GET /api/spending/insights", async () => {
+    const dbClient = await import("../db/client.js");
+    dbClient.setPool({
+      query: async () => {
+        return {
+          rows: [
+            {
+              id: "db-1",
+              description: "Pizza",
+              amount: "600.00",
+              category: "Food & Dining",
+              merchant: "Dominos",
+              expense_date: "2026-09-20",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+          ],
+          rowCount: 1,
+          command: "SELECT",
+          oid: 0,
+          fields: [],
+        };
+      },
+    } as any);
+
+    process.env.AI_SERVICE_URL = `http://localhost:${mockAiPort}`;
+
+    const res = await fetch(`http://localhost:${port}/api/spending/insights`, {
+      method: "GET",
+    });
+
+    assert.equal(res.status, 200);
+    const data = (await res.json()) as { success: boolean; data: { summary: any; insights: string[] } };
+    assert.equal(data.success, true);
+    assert.equal(data.data.summary.total_spending, 1050);
+  });
 });
+

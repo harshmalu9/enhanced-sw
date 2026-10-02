@@ -3,14 +3,13 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+*.tsbuildinfo
 
-# Next.js build output
-.next/
-out/
-
-# Build artifacts
+# Build artifacts & runtime logs
 dist/
 build/
+web-build/
+.runtime/
 
 # Environment files
 .env
@@ -21,7 +20,7 @@ build/
 .env.*
 !.env.example
 
-# Python
+# Python virtual environments & caches
 .venv/
 venv/
 ENV/
@@ -34,6 +33,12 @@ __pycache__/
 *.egg-info/
 .installed.cfg
 *.egg
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Expo / React Native
+.expo/
 
 # IDE / OS files
 .DS_Store

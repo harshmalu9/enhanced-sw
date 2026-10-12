@@ -4,20 +4,10 @@
 
 ---
 
-**Academic Project Report**  
-Submitted in partial fulfillment of the requirements for the degree of  
-**Bachelor of Technology in Computer Science and Engineering / Artificial Intelligence and Machine Learning**
-
-**Submitted by:**  
-- **[STUDENT NAME]** ([ROLL NUMBER])  
-- **[STUDENT NAME 2]** ([ROLL NUMBER 2])  
-
-**Under the Guidance of:**  
-- **[PROJECT GUIDE / SUPERVISOR NAME]**, *[Designation, Department]*  
-
-**Department of Computer Science and Engineering**  
-**[INSTITUTION / UNIVERSITY NAME]**  
-**[ACADEMIC YEAR]**
+Chirag Bhalotia — 1032232301  
+Harsh Malu — 1032232445  
+Aditya Raj — 1032232452  
+Archit Kankaria — 1032231900  
 
 ---
 

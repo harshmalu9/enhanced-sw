@@ -3,10 +3,9 @@ import { ReceiptFile, SplitResponse } from "../types/bill";
 import { ExpenseCategorizeParams, ExpenseCategorizeResponse } from "../types/expense";
 import { ExpenseInput, PeriodInput, SpendingInsightsResponse } from "../types/spending";
 
-// Configurable API base URL: EXPO_PUBLIC_API_URL (defaults to http://192.168.1.100:3001 or localhost)
+// Configurable API base URL: EXPO_PUBLIC_API_URL
 const API_BASE_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (Platform.OS === "android" ? "http://10.0.2.2:3001" : "http://localhost:3001");
+  process.env.EXPO_PUBLIC_API_URL || "http://192.168.1.100:3001";
 
 export interface ProcessBillParams {
   receipt: ReceiptFile;

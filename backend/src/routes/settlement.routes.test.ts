@@ -120,5 +120,44 @@ describe("Backend API: /api/settlement/simplify", () => {
     });
 
     assert.strictEqual(res.status, 400);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+    assert.strictEqual(body.error.code, "INVALID_AMOUNT");
+  });
+
+  test("should return 400 if participant has empty or whitespace-only person name", async () => {
+    const res = await fetch(`${baseUrl}/api/settlement/simplify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payments: [
+          { person: "  ", amount_paid: 50 },
+          { person: "B", amount_paid: 100 },
+        ],
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+    assert.strictEqual(body.error.code, "INVALID_PARTICIPANT");
+  });
+
+  test("should return 400 if amount_paid is NaN or not a finite number", async () => {
+    const res = await fetch(`${baseUrl}/api/settlement/simplify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        payments: [
+          { person: "A", amount_paid: "invalid-number" },
+          { person: "B", amount_paid: 100 },
+        ],
+      }),
+    });
+
+    assert.strictEqual(res.status, 400);
+    const body = await res.json();
+    assert.strictEqual(body.success, false);
+    assert.strictEqual(body.error.code, "INVALID_AMOUNT");
   });
 });

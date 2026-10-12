@@ -1,31 +1,44 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
   ActivityIndicator,
+  Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TouchableNativeFeedback,
   TouchableOpacity,
   View,
 } from "react-native";
-import { getExpenses, getBudgetStatus, detectAnomalies, ApiError } from "../services/api";
+import { MaterialIcons } from "@expo/vector-icons";
+import { Colors, Elevation, Shapes, Typography } from "../constants/theme";
+import { getExpenses, getBudgetStatus, detectAnomalies, seedDemoData } from "../services/api";
 import { ExpenseRecord } from "../types/expense";
 import { BudgetStatus } from "../types/budget";
 import { AnomalyDetectionResponse } from "../types/anomaly";
+import { CategoryIcon } from "./CategoryIcon";
+import { BudgetModal } from "./BudgetModal";
 
 interface DashboardViewProps {
-  onNavigate: (tab: "split" | "add" | "history" | "insights" | "budget" | "settlement") => void;
+  onNavigateToTab: (tab: "expenses" | "split" | "insights") => void;
+  onOpenAddExpense: () => void;
+  refreshTrigger?: number;
 }
 
-export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
+export const DashboardView: React.FC<DashboardViewProps> = ({
+  onNavigateToTab,
+  onOpenAddExpense,
+  refreshTrigger = 0,
+}) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isSeeding, setIsSeeding] = useState<boolean>(false);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [budgetStatus, setBudgetStatus] = useState<BudgetStatus | null>(null);
   const [anomalies, setAnomalies] = useState<AnomalyDetectionResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [isBudgetModalVisible, setIsBudgetModalVisible] = useState<boolean>(false);
 
-  const loadDashboardData = useCallback(async () => {
-    setIsLoading(true);
-    setError(null);
+  const loadData = useCallback(async () => {
     try {
       const [expRes, budgetRes, anomalyRes] = await Promise.all([
         getExpenses().catch(() => ({ data: [] })),
@@ -36,79 +49,193 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       setExpenses(expRes.data || []);
       setBudgetStatus(budgetRes);
       setAnomalies(anomalyRes);
-    } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else {
-        setError("Failed to load dashboard overview.");
-      }
+    } catch {
+      // Graceful fallback
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    loadDashboardData();
-  }, [loadDashboardData]);
+    loadData();
+  }, [loadData, refreshTrigger]);
+
+  const handlePullRefresh = () => {
+    setIsRefreshing(true);
+    loadData();
+  };
+
+  const handleSeedSampleData = async () => {
+    setIsSeeding(true);
+    try {
+      await seedDemoData();
+      await loadData();
+    } catch {
+      // error handled
+    } finally {
+      setIsSeeding(false);
+    }
+  };
 
   const totalSpentAll = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  // Month-to-date calculation
+  const now = new Date();
+  const currentMonthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const currentMonthExpenses = expenses.filter((e) => e.date?.startsWith(currentMonthPrefix));
+  const currentMonthSpent = currentMonthExpenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const formatCurrency = (amt: number) => {
+    return `₹${amt.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+
+  const formatCurrencyWhole = (amt: number) => {
+    return `₹${amt.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  };
+
+  const renderQuickAction = (
+    label: string,
+    icon: keyof typeof MaterialIcons.glyphMap,
+    onPress: () => void,
+    isPrimary: boolean
+  ) => {
+    const content = (
+      <View
+        style={[
+          styles.actionButtonInner,
+          isPrimary ? styles.actionPrimaryInner : styles.actionSecondaryInner,
+        ]}
+      >
+        <MaterialIcons
+          name={icon}
+          size={20}
+          color={isPrimary ? Colors.onPrimary : Colors.primary}
+        />
+        <Text
+          style={[
+            styles.actionButtonText,
+            isPrimary ? styles.actionPrimaryText : styles.actionSecondaryText,
+          ]}
+        >
+          {label}
+        </Text>
+      </View>
+    );
+
+    if (Platform.OS === "android") {
+      return (
+        <View style={styles.actionButtonWrapper}>
+          <TouchableNativeFeedback
+            onPress={onPress}
+            background={TouchableNativeFeedback.Ripple(
+              isPrimary ? Colors.rippleLight : Colors.ripple,
+              false
+            )}
+          >
+            {content}
+          </TouchableNativeFeedback>
+        </View>
+      );
+    }
+
+    return (
+      <TouchableOpacity
+        style={styles.actionButtonWrapper}
+        onPress={onPress}
+        activeOpacity={0.8}
+      >
+        {content}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.contentContainer}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handlePullRefresh}
+          colors={[Colors.primary]}
+          tintColor={Colors.primary}
+        />
+      }
     >
-      {/* Welcome Banner */}
-      <View style={styles.welcomeCard}>
-        <View style={styles.welcomeTop}>
-          <Text style={styles.welcomeGreeting}>Financial Overview</Text>
-          <TouchableOpacity onPress={loadDashboardData} style={styles.refreshBtn}>
-            <Text style={styles.refreshBtnText}>↻</Text>
+      {/* 1. Hero Spending Banner */}
+      <View style={styles.heroCard}>
+        <View style={styles.heroHeader}>
+          <Text style={styles.heroMonthLabel}>
+            {now.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+          </Text>
+          <TouchableOpacity
+            onPress={() => setIsBudgetModalVisible(true)}
+            style={styles.heroBudgetLink}
+            activeOpacity={0.7}
+          >
+            <MaterialIcons name="tune" size={14} color={Colors.secondary} />
+            <Text style={styles.heroBudgetLinkText}>
+              {budgetStatus ? "Edit Budget" : "Set Budget"}
+            </Text>
           </TouchableOpacity>
         </View>
-        <Text style={styles.welcomeSubtitle}>
-          {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+
+        <Text style={styles.heroAmountLabel}>This Month's Spending</Text>
+        <Text style={styles.heroAmountValue}>
+          {formatCurrency(budgetStatus ? budgetStatus.totalSpent : currentMonthSpent)}
         </Text>
 
-        <View style={styles.summaryStatsRow}>
-          <View style={styles.statCol}>
-            <Text style={styles.statColLabel}>Total Recorded Spend</Text>
-            <Text style={styles.statColValue}>
-              ₹{totalSpentAll.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
+        <View style={styles.heroDivider} />
+
+        <View style={styles.heroMetricsRow}>
+          <View style={styles.heroMetricItem}>
+            <Text style={styles.heroMetricLabel}>Monthly Budget</Text>
+            <Text style={styles.heroMetricValue}>
+              {budgetStatus ? formatCurrencyWhole(budgetStatus.monthlyBudget) : "Not set"}
             </Text>
           </View>
-          <View style={styles.statDivider} />
-          <View style={styles.statCol}>
-            <Text style={styles.statColLabel}>Transactions</Text>
-            <Text style={styles.statColValue}>{expenses.length}</Text>
+
+          <View style={styles.heroMetricDivider} />
+
+          <View style={styles.heroMetricItem}>
+            <Text style={styles.heroMetricLabel}>
+              {budgetStatus && budgetStatus.remainingAmount < 0 ? "Over Budget" : "Remaining"}
+            </Text>
+            <Text
+              style={[
+                styles.heroMetricValue,
+                budgetStatus && budgetStatus.remainingAmount < 0
+                  ? { color: "#FCA5A5" }
+                  : { color: Colors.secondary },
+              ]}
+            >
+              {budgetStatus
+                ? formatCurrency(Math.abs(budgetStatus.remainingAmount))
+                : "—"}
+            </Text>
           </View>
         </View>
       </View>
 
-      {/* Budget Snapshot */}
+      {/* 2. Budget Progress Bar */}
       {budgetStatus && (
-        <TouchableOpacity
-          style={styles.budgetCard}
-          onPress={() => onNavigate("budget")}
-          activeOpacity={0.8}
-        >
-          <View style={styles.budgetHeader}>
-            <Text style={styles.budgetCardTitle}>🎯 Monthly Budget Progress</Text>
-            <Text
-              style={[
-                styles.budgetStatusBadge,
-                budgetStatus.status === "EXCEEDED"
-                  ? styles.badgeRed
-                  : budgetStatus.status === "WARNING"
-                  ? styles.badgeAmber
-                  : styles.badgeGreen,
-              ]}
-            >
-              {budgetStatus.percentageUsed.toFixed(0)}% Used
+        <View style={styles.budgetProgressCard}>
+          <View style={styles.budgetHeaderRow}>
+            <Text style={styles.budgetStatusText}>
+              {budgetStatus.status === "EXCEEDED"
+                ? "Budget limit exceeded"
+                : budgetStatus.status === "WARNING"
+                ? "Approaching monthly limit"
+                : "Spending is on track"}
+            </Text>
+            <Text style={styles.budgetPercentText}>
+              {budgetStatus.percentageUsed.toFixed(0)}% used
             </Text>
           </View>
-          <View style={styles.progressBarBg}>
+
+          <View style={styles.progressBarTrack}>
             <View
               style={[
                 styles.progressBarFill,
@@ -116,121 +243,144 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                   width: `${Math.min(budgetStatus.percentageUsed, 100)}%`,
                   backgroundColor:
                     budgetStatus.status === "EXCEEDED"
-                      ? "#dc2626"
+                      ? Colors.error
                       : budgetStatus.status === "WARNING"
-                      ? "#d97706"
-                      : "#16a34a",
+                      ? Colors.warning
+                      : Colors.success,
                 },
               ]}
             />
           </View>
-          <View style={styles.budgetFooter}>
-            <Text style={styles.budgetFooterText}>
-              Spent: ₹{budgetStatus.totalSpent.toLocaleString("en-IN")} / ₹{budgetStatus.monthlyBudget.toLocaleString("en-IN")}
-            </Text>
-            <Text style={styles.budgetLinkText}>View Details →</Text>
-          </View>
-        </TouchableOpacity>
+
+          <Text style={styles.budgetHumanNote}>
+            {budgetStatus.remainingAmount >= 0
+              ? `${formatCurrency(budgetStatus.remainingAmount)} remaining for the next ${
+                  new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate() - now.getDate()
+                } days.`
+              : `You have spent ${formatCurrency(
+                  Math.abs(budgetStatus.remainingAmount)
+                )} more than your monthly target.`}
+          </Text>
+        </View>
       )}
 
-      {/* Anomaly Callout Banner */}
+      {/* 3. Conditional Alert Banner (Only when genuine anomalies or over-budget exist) */}
       {anomalies && anomalies.anomalies_detected_count > 0 && (
         <TouchableOpacity
-          style={styles.anomalyBanner}
-          onPress={() => onNavigate("insights")}
+          style={styles.alertCard}
+          onPress={() => onNavigateToTab("insights")}
           activeOpacity={0.8}
         >
-          <Text style={styles.anomalyIcon}>🚨</Text>
-          <View style={styles.anomalyBannerTextWrapper}>
-            <Text style={styles.anomalyBannerTitle}>
-              {anomalies.anomalies_detected_count} Spending Anomalies Detected
-            </Text>
-            <Text style={styles.anomalyBannerSubtitle}>
-              Statistical models flagged unusual spending above typical baselines.
+          <View style={styles.alertIconCircle}>
+            <MaterialIcons name="notifications-active" size={18} color={Colors.warning} />
+          </View>
+          <View style={styles.alertTextWrapper}>
+            <Text style={styles.alertTitle}>Spending Notice</Text>
+            <Text style={styles.alertMessage}>
+              {anomalies.anomalies_detected_count === 1
+                ? "1 unusual transaction was flagged higher than usual."
+                : `${anomalies.anomalies_detected_count} transactions are noticeably higher than your category averages.`}
             </Text>
           </View>
-          <Text style={styles.anomalyArrow}>→</Text>
+          <MaterialIcons name="chevron-right" size={20} color={Colors.secondaryText} />
         </TouchableOpacity>
       )}
 
-      {/* Quick Action Navigation Grid */}
-      <Text style={styles.sectionHeader}>Quick Actions</Text>
-      <View style={styles.actionsGrid}>
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => onNavigate("split")}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionIcon}>🧾</Text>
-          <Text style={styles.actionTitle}>Split a Bill</Text>
-          <Text style={styles.actionDesc}>OCR receipt & AI item share calculations</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => onNavigate("add")}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionIcon}>➕</Text>
-          <Text style={styles.actionTitle}>Add Expense</Text>
-          <Text style={styles.actionDesc}>Instant AI category classification</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => onNavigate("insights")}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionIcon}>💡</Text>
-          <Text style={styles.actionTitle}>AI Insights</Text>
-          <Text style={styles.actionDesc}>Prophet forecasting & spending trends</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.actionCard}
-          onPress={() => onNavigate("settlement")}
-          activeOpacity={0.7}
-        >
-          <Text style={styles.actionIcon}>🤝</Text>
-          <Text style={styles.actionTitle}>Group Settlement</Text>
-          <Text style={styles.actionDesc}>Simplify multi-payer debts</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Recent Expenses Snapshot */}
-      <View style={styles.recentSection}>
-        <View style={styles.recentHeaderRow}>
-          <Text style={styles.sectionHeader}>Recent Transactions</Text>
-          <TouchableOpacity onPress={() => onNavigate("history")}>
-            <Text style={styles.seeAllText}>See All ({expenses.length}) →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {isLoading ? (
-          <ActivityIndicator size="small" color="#2563eb" style={{ marginVertical: 16 }} />
-        ) : expenses.length === 0 ? (
-          <View style={styles.noDataCard}>
-            <Text style={styles.noDataText}>No expenses recorded yet.</Text>
-            <TouchableOpacity onPress={() => onNavigate("add")} style={styles.addFirstBtn}>
-              <Text style={styles.addFirstBtnText}>+ Add First Expense</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          expenses.slice(0, 4).map((exp) => (
-            <View key={exp.id} style={styles.recentItem}>
-              <View style={styles.recentLeft}>
-                <Text style={styles.recentDesc} numberOfLines={1}>{exp.description}</Text>
-                <Text style={styles.recentMeta}>
-                  {exp.category} • {exp.date}
-                </Text>
-              </View>
-              <Text style={styles.recentAmount}>
-                ₹{exp.amount.toLocaleString("en-IN", { minimumFractionDigits: 2 })}
-              </Text>
-            </View>
-          ))
+      {/* 4. Quick Actions */}
+      <View style={styles.quickActionsRow}>
+        {renderQuickAction("Add Expense", "add", onOpenAddExpense, true)}
+        {renderQuickAction(
+          "Split a Bill",
+          "call-split",
+          () => onNavigateToTab("split"),
+          false
         )}
       </View>
+
+      {/* 5. Recent Expenses Ledger */}
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>Recent Transactions</Text>
+        {expenses.length > 0 && (
+          <TouchableOpacity
+            onPress={() => onNavigateToTab("expenses")}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Text style={styles.viewLedgerLink}>View Ledger</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="small" color={Colors.primary} />
+        </View>
+      ) : expenses.length === 0 ? (
+        <View style={styles.emptyRecentCard}>
+          <Text style={styles.emptyRecentTitle}>No transactions yet</Text>
+          <Text style={styles.emptyRecentText}>
+            Add your first expense or split a bill to start tracking.
+          </Text>
+          <View style={styles.emptyActionsRow}>
+            <TouchableOpacity
+              style={styles.emptyAddBtn}
+              onPress={onOpenAddExpense}
+              activeOpacity={0.8}
+            >
+              <MaterialIcons name="add" size={16} color={Colors.onPrimary} />
+              <Text style={styles.emptyAddBtnText}>Add Expense</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.emptySeedBtn}
+              onPress={handleSeedSampleData}
+              disabled={isSeeding}
+              activeOpacity={0.8}
+            >
+              {isSeeding ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <>
+                  <MaterialIcons name="restore" size={16} color={Colors.primary} />
+                  <Text style={styles.emptySeedBtnText}>Load Sample Data</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <View style={styles.recentList}>
+          {expenses.slice(0, 4).map((exp) => (
+            <TouchableOpacity
+              key={exp.id}
+              style={styles.recentItem}
+              onPress={() => onNavigateToTab("expenses")}
+              activeOpacity={0.7}
+            >
+              <CategoryIcon category={exp.category} size={40} iconSize={20} />
+              <View style={styles.recentMiddle}>
+                <Text style={styles.recentDescription} numberOfLines={1}>
+                  {exp.description}
+                </Text>
+                <Text style={styles.recentMeta}>
+                  {exp.category} {exp.merchant ? `• ${exp.merchant}` : ""} • {exp.date}
+                </Text>
+              </View>
+              <Text style={styles.recentAmount}>{formatCurrency(exp.amount)}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      {/* Budget Modal */}
+      <BudgetModal
+        visible={isBudgetModalVisible}
+        currentBudget={budgetStatus}
+        onClose={() => setIsBudgetModalVisible(false)}
+        onBudgetUpdated={(newStatus) => {
+          setBudgetStatus(newStatus);
+          loadData();
+        }}
+      />
     </ScrollView>
   );
 };
@@ -238,275 +388,304 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
   },
   contentContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 40,
+    padding: 16,
+    paddingBottom: 32,
   },
-  welcomeCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-    marginBottom: 14,
-  },
-  welcomeTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  welcomeGreeting: {
-    fontSize: 18,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  welcomeSubtitle: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2,
+  heroCard: {
+    backgroundColor: Colors.primary, // Emerald Ink
+    borderRadius: Shapes.radiusLg,
+    padding: 20,
     marginBottom: 12,
+    ...Elevation.level2,
   },
-  refreshBtn: {
-    padding: 4,
-  },
-  refreshBtnText: {
-    fontSize: 16,
-    color: "#64748b",
-  },
-  summaryStatsRow: {
-    flexDirection: "row",
-    backgroundColor: "#f8fafc",
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  statCol: {
-    flex: 1,
-    alignItems: "center",
-  },
-  statDivider: {
-    width: 1,
-    height: 30,
-    backgroundColor: "#e2e8f0",
-  },
-  statColLabel: {
-    fontSize: 11,
-    color: "#64748b",
-    fontWeight: "600",
-    marginBottom: 2,
-  },
-  statColValue: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#0f172a",
-  },
-  budgetCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    marginBottom: 14,
-  },
-  budgetHeader: {
+  heroHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: 8,
   },
-  budgetCardTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
+  heroMonthLabel: {
+    ...Typography.labelMedium,
+    color: Colors.secondary, // Champagne
+    textTransform: "uppercase",
+    letterSpacing: 0.8,
   },
-  budgetStatusBadge: {
-    fontSize: 11,
-    fontWeight: "700",
-    paddingHorizontal: 6,
+  heroBudgetLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
     paddingVertical: 2,
-    borderRadius: 6,
+    paddingHorizontal: 8,
+    borderRadius: Shapes.radiusSm,
+    backgroundColor: "rgba(248, 231, 201, 0.15)",
   },
-  badgeGreen: {
-    backgroundColor: "#dcfce7",
-    color: "#16a34a",
+  heroBudgetLinkText: {
+    ...Typography.bodySmall,
+    color: Colors.secondary,
+    fontWeight: "600",
+    fontSize: 11,
   },
-  badgeAmber: {
-    backgroundColor: "#fef3c7",
-    color: "#d97706",
+  heroAmountLabel: {
+    ...Typography.bodySmall,
+    color: "rgba(255, 255, 255, 0.75)",
+    marginBottom: 2,
   },
-  badgeRed: {
-    backgroundColor: "#fee2e2",
-    color: "#dc2626",
+  heroAmountValue: {
+    ...Typography.headlineLarge,
+    fontSize: 28,
+    color: Colors.onPrimary,
+    fontWeight: "800",
   },
-  progressBarBg: {
-    height: 8,
-    backgroundColor: "#f1f5f9",
-    borderRadius: 4,
+  heroDivider: {
+    height: 1,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    marginVertical: 14,
+  },
+  heroMetricsRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  heroMetricItem: {
+    flex: 1,
+  },
+  heroMetricLabel: {
+    ...Typography.labelSmall,
+    color: "rgba(255, 255, 255, 0.7)",
+    marginBottom: 2,
+  },
+  heroMetricValue: {
+    ...Typography.titleMedium,
+    color: Colors.onPrimary,
+    fontWeight: "700",
+  },
+  heroMetricDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: "rgba(255, 255, 255, 0.15)",
+    marginHorizontal: 12,
+  },
+  budgetProgressCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Shapes.radiusMd,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    padding: 14,
+    marginBottom: 12,
+  },
+  budgetHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  budgetStatusText: {
+    ...Typography.titleSmall,
+    color: Colors.primaryText,
+    fontWeight: "700",
+  },
+  budgetPercentText: {
+    ...Typography.labelMedium,
+    color: Colors.secondaryText,
+    fontWeight: "600",
+  },
+  progressBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: Colors.surfaceVariant,
     overflow: "hidden",
-    marginBottom: 6,
+    marginBottom: 8,
   },
   progressBarFill: {
     height: "100%",
-    borderRadius: 4,
+    borderRadius: 3,
   },
-  budgetFooter: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+  budgetHumanNote: {
+    ...Typography.bodySmall,
+    color: Colors.secondaryText,
+    lineHeight: 16,
   },
-  budgetFooterText: {
-    fontSize: 11,
-    color: "#64748b",
-  },
-  budgetLinkText: {
-    fontSize: 11,
-    color: "#2563eb",
-    fontWeight: "600",
-  },
-  anomalyBanner: {
+  alertCard: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#fff7ed",
-    borderWidth: 1,
-    borderColor: "#fed7aa",
-    borderRadius: 12,
+    backgroundColor: Colors.warningContainer,
+    borderRadius: Shapes.radiusMd,
     padding: 12,
     marginBottom: 14,
+    gap: 10,
   },
-  anomalyIcon: {
-    fontSize: 22,
-    marginRight: 10,
+  alertIconCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  anomalyBannerTextWrapper: {
+  alertTextWrapper: {
     flex: 1,
   },
-  anomalyBannerTitle: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#c2410c",
+  alertTitle: {
+    ...Typography.labelLarge,
+    color: Colors.warning,
+    fontSize: 12,
   },
-  anomalyBannerSubtitle: {
-    fontSize: 11,
-    color: "#9a3412",
+  alertMessage: {
+    ...Typography.bodySmall,
+    color: "#78350F",
+    fontSize: 12,
     marginTop: 1,
   },
-  anomalyArrow: {
-    fontSize: 16,
-    color: "#c2410c",
-    fontWeight: "700",
-    marginLeft: 6,
-  },
-  sectionHeader: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 10,
-  },
-  actionsGrid: {
+  quickActionsRow: {
     flexDirection: "row",
-    flexWrap: "wrap",
     gap: 10,
     marginBottom: 18,
   },
-  actionCard: {
-    width: "48%",
-    backgroundColor: "#ffffff",
+  actionButtonWrapper: {
+    flex: 1,
+    borderRadius: Shapes.radiusMd,
+    overflow: "hidden",
+  },
+  actionButtonInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    minHeight: 48,
+    borderRadius: Shapes.radiusMd,
+  },
+  actionPrimaryInner: {
+    backgroundColor: Colors.primary,
+  },
+  actionSecondaryInner: {
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 14,
-    padding: 14,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
+    borderColor: Colors.outline,
   },
-  actionIcon: {
-    fontSize: 24,
-    marginBottom: 6,
-  },
-  actionTitle: {
+  actionButtonText: {
+    ...Typography.labelLarge,
     fontSize: 13,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 2,
   },
-  actionDesc: {
-    fontSize: 11,
-    color: "#64748b",
-    lineHeight: 14,
+  actionPrimaryText: {
+    color: Colors.onPrimary,
   },
-  recentSection: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
+  actionSecondaryText: {
+    color: Colors.primary,
   },
-  recentHeaderRow: {
+  sectionHeaderRow: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 8,
+    marginBottom: 10,
   },
-  seeAllText: {
-    fontSize: 12,
-    color: "#2563eb",
-    fontWeight: "600",
+  sectionTitle: {
+    ...Typography.titleLarge,
+    fontSize: 16,
+    color: Colors.primaryText,
+  },
+  viewLedgerLink: {
+    ...Typography.labelMedium,
+    color: Colors.primary,
+    fontWeight: "700",
+  },
+  recentList: {
+    backgroundColor: Colors.surface,
+    borderRadius: Shapes.radiusMd,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    overflow: "hidden",
   },
   recentItem: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
     borderBottomWidth: 1,
-    borderBottomColor: "#f1f5f9",
+    borderBottomColor: Colors.surfaceVariant,
   },
-  recentLeft: {
+  recentMiddle: {
     flex: 1,
-    marginRight: 10,
+    marginLeft: 12,
+    marginRight: 8,
   },
-  recentDesc: {
-    fontSize: 13,
+  recentDescription: {
+    ...Typography.bodyLarge,
     fontWeight: "600",
-    color: "#0f172a",
+    color: Colors.primaryText,
+    fontSize: 14,
   },
   recentMeta: {
-    fontSize: 11,
-    color: "#64748b",
+    ...Typography.bodySmall,
+    color: Colors.secondaryText,
     marginTop: 2,
   },
   recentAmount: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
+    ...Typography.amountMedium,
+    fontSize: 15,
+    color: Colors.primaryText,
   },
-  noDataCard: {
-    paddingVertical: 20,
+  loadingContainer: {
+    paddingVertical: 24,
     alignItems: "center",
   },
-  noDataText: {
-    fontSize: 13,
-    color: "#94a3b8",
-    marginBottom: 8,
+  emptyRecentCard: {
+    backgroundColor: Colors.surface,
+    borderRadius: Shapes.radiusMd,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    padding: 24,
+    alignItems: "center",
   },
-  addFirstBtn: {
-    backgroundColor: "#eff6ff",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
+  emptyRecentTitle: {
+    ...Typography.titleSmall,
+    color: Colors.primaryText,
+    marginBottom: 4,
   },
-  addFirstBtnText: {
-    color: "#2563eb",
-    fontSize: 12,
+  emptyRecentText: {
+    ...Typography.bodySmall,
+    color: Colors.secondaryText,
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  emptyActionsRow: {
+    flexDirection: "row",
+    gap: 10,
+    alignItems: "center",
+  },
+  emptyAddBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: Shapes.radiusSm,
+  },
+  emptyAddBtnText: {
+    ...Typography.labelMedium,
+    color: Colors.onPrimary,
+    fontWeight: "700",
+  },
+  emptySeedBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: Colors.surfaceVariant,
+    borderWidth: 1,
+    borderColor: Colors.outline,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: Shapes.radiusSm,
+    minWidth: 130,
+    justifyContent: "center",
+  },
+  emptySeedBtnText: {
+    ...Typography.labelMedium,
+    color: Colors.primary,
     fontWeight: "600",
   },
 });

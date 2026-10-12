@@ -1,0 +1,14 @@
+{
+  "name": "report",
+  "version": "1.0.0",
+  "description": "This directory contains the complete academic project report, artifacts, literature survey, evidence audits, system diagrams, and captured application screenshots for the **enhanced-sw** project.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "type": "commonjs",
+  "dependencies": {
+    "puppeteer-core": "^25.12.0"
+  }
+}

@@ -12,10 +12,12 @@ export interface ParticipantBalance {
 }
 
 export interface SettlementTransfer {
+  id?: string;
   from_person: string;
   to_person: string;
   amount: number;
   instruction: string;
+  status?: "pending" | "settled";
 }
 
 export interface GroupSettlementRequest {
@@ -31,6 +33,10 @@ export interface GroupSettlementResponse {
   balances: ParticipantBalance[];
   transfers: SettlementTransfer[];
   total_transfers_count: number;
+  settled_count?: number;
+  pending_count?: number;
+  remaining_unsettled_transfers?: SettlementTransfer[];
+  remaining_unsettled_amount?: number;
   is_settled: boolean;
   error?: {
     code: string;

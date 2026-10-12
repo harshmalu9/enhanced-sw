@@ -1,42 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
-  ScrollView,
   StatusBar,
   StyleSheet,
-  Switch,
-  Text,
-  TouchableOpacity,
   View,
 } from "react-native";
 import {
   SafeAreaProvider,
   SafeAreaView,
 } from "react-native-safe-area-context";
-import { Header } from "./components/Header";
+import { Colors } from "./constants/theme";
+import { TopAppBar } from "./components/TopAppBar";
+import { BottomNavBar, NavTab } from "./components/BottomNavBar";
 import { DashboardView } from "./components/DashboardView";
-import { ReceiptUploader } from "./components/ReceiptUploader";
-import { ParticipantInput } from "./components/ParticipantInput";
-import { InstructionInput } from "./components/InstructionInput";
-import { SplitResultView } from "./components/SplitResultView";
-import { ErrorBanner } from "./components/ErrorBanner";
-import { LoadingOverlay } from "./components/LoadingOverlay";
-import { AddExpenseView } from "./components/AddExpenseView";
-import { ExpenseHistoryView } from "./components/ExpenseHistoryView";
+import { ExpensesScreen } from "./components/ExpensesScreen";
+import { SplitBillScreen } from "./components/SplitBillScreen";
 import { SpendingInsightsView } from "./components/SpendingInsightsView";
-import { BudgetView } from "./components/BudgetView";
-import { GroupSettlementView } from "./components/GroupSettlementView";
-import { processBill, seedDemoData, ApiError } from "./services/api";
-import {
-  BillSplitResult,
-  BillValidationResult,
-  ReceiptFile,
-} from "./types/bill";
-
-type ActiveTab = "home" | "split" | "add" | "history" | "insights" | "budget" | "settlement";
-type Stage = "upload" | "details" | "result";
 
 export default function App() {
   return (
@@ -47,416 +27,85 @@ export default function App() {
 }
 
 function MainApp() {
-  const [activeTab, setActiveTab] = useState<ActiveTab>("home");
-  const [stage, setStage] = useState<Stage>("upload");
-  const [receipt, setReceipt] = useState<ReceiptFile | null>(null);
-  const [people, setPeople] = useState<string[]>([]);
-  const [isEqualSplit, setIsEqualSplit] = useState<boolean>(false);
-  const [instruction, setInstruction] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [isSeeding, setIsSeeding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [splitResult, setSplitResult] = useState<BillSplitResult | null>(null);
-  const [validation, setValidation] = useState<BillValidationResult | null>(null);
+  const [activeTab, setActiveTab] = useState<NavTab>("home");
+  const [isAddExpenseOpen, setIsAddExpenseOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const handleSelectReceipt = (selectedReceipt: ReceiptFile) => {
-    setReceipt(selectedReceipt);
-    setError(null);
-  };
+  const handleDataMutated = useCallback(() => {
+    setRefreshTrigger((prev) => prev + 1);
+  }, []);
 
-  const handleContinueToDetails = () => {
-    if (!receipt) {
-      setError("Please select a receipt image first.");
-      return;
-    }
-    setError(null);
-    setStage("details");
-  };
-
-  const handleAddPerson = (name: string) => {
-    if (!name.trim()) return;
-    setPeople((prev) => [...prev, name.trim()]);
-  };
-
-  const handleRemovePerson = (index: number) => {
-    setPeople((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleCalculateSplit = async () => {
-    if (!receipt) {
-      setError("Receipt image is missing. Please select a receipt.");
-      setStage("upload");
-      return;
-    }
-
-    if (people.length < 2) {
-      setError("At least two participants are required to split a bill.");
-      return;
-    }
-
-    const finalInstruction = isEqualSplit
-      ? "Everyone shared all items equally."
-      : instruction.trim();
-
-    if (!isEqualSplit && !finalInstruction) {
-      setError("Please enter who consumed which items in the instruction box.");
-      return;
-    }
-
-    setError(null);
-    setIsLoading(true);
-
-    try {
-      const response = await processBill({
-        receipt,
-        people,
-        instruction: finalInstruction,
-      });
-
-      setSplitResult(response.data);
-      setValidation(response.validation || null);
-      setStage("result");
-    } catch (err: unknown) {
-      if (err instanceof ApiError) {
-        setError(err.message);
-      } else if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("An unexpected error occurred while processing the bill.");
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleReset = () => {
-    setStage("upload");
-    setReceipt(null);
-    setPeople([]);
-    setIsEqualSplit(false);
-    setInstruction("");
-    setSplitResult(null);
-    setValidation(null);
-    setError(null);
-  };
-
-  const handleLoadDemoData = async () => {
-    setIsSeeding(true);
-    try {
-      const res = await seedDemoData();
-      Alert.alert(
-        "Demo Data Loaded",
-        `Successfully populated database with ${res.expensesCount} realistic transactions and monthly budget for demonstration.`,
-        [
-          {
-            text: "View Insights",
-            onPress: () => setActiveTab("insights"),
-          },
-          {
-            text: "View Home",
-            onPress: () => setActiveTab("home"),
-          },
-        ]
-      );
-    } catch (err: unknown) {
-      Alert.alert(
-        "Seeding Error",
-        err instanceof Error ? err.message : "Failed to load demo data."
-      );
-    } finally {
-      setIsSeeding(false);
-    }
-  };
-
-  const isCalculateDisabled =
-    people.length < 2 || (!isEqualSplit && !instruction.trim()) || isLoading;
-
-  const getHeaderSubtitle = () => {
+  const getAppBarTitle = () => {
     switch (activeTab) {
       case "home":
-        return "Personal & Group Expense Intelligence";
+        return "Home";
+      case "expenses":
+        return "Expenses";
       case "split":
-        return "Receipt OCR & Intelligent Bill Split";
-      case "add":
-        return "Add & Auto-Categorize Expense";
-      case "history":
-        return "Persistent Expense History";
+        return "Split & Groups";
       case "insights":
-        return "Insights, Prophet Forecast & Anomalies";
-      case "budget":
-        return "Monthly & Category Budget Tracking";
-      case "settlement":
-        return "Multi-Payer Debt Simplification";
+        return "Insights";
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top", "left", "right", "bottom"]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+      <StatusBar barStyle="dark-content" backgroundColor={Colors.surface} />
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.container}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
       >
-        <Header
-          subtitle={getHeaderSubtitle()}
-          onLoadDemoData={handleLoadDemoData}
-          isSeeding={isSeeding}
+        {/* Material 3 Top App Bar without redundant buttons */}
+        <TopAppBar
+          title={getAppBarTitle()}
         />
 
-        {/* Tab Navigation Scrollable Bar */}
-        <View style={styles.tabContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabScrollContent}
-          >
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "home" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("home")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "home" && styles.tabButtonTextActive,
-                ]}
-              >
-                🏠 Home
-              </Text>
-            </TouchableOpacity>
+        {/* Main Screen Content Area */}
+        <View style={styles.contentArea}>
+          {activeTab === "home" && (
+            <DashboardView
+              onNavigateToTab={(tab) => setActiveTab(tab)}
+              onOpenAddExpense={() => {
+                setActiveTab("expenses");
+                setIsAddExpenseOpen(true);
+              }}
+              refreshTrigger={refreshTrigger}
+            />
+          )}
 
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "split" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("split")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "split" && styles.tabButtonTextActive,
-                ]}
-              >
-                🧾 Split Bill
-              </Text>
-            </TouchableOpacity>
+          {activeTab === "expenses" && (
+            <ExpensesScreen
+              isAddExpenseOpen={isAddExpenseOpen}
+              onOpenAddExpense={() => setIsAddExpenseOpen(true)}
+              onCloseAddExpense={() => setIsAddExpenseOpen(false)}
+              onDataMutated={handleDataMutated}
+              refreshTrigger={refreshTrigger}
+            />
+          )}
 
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "add" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("add")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "add" && styles.tabButtonTextActive,
-                ]}
-              >
-                ➕ Add
-              </Text>
-            </TouchableOpacity>
+          {activeTab === "split" && (
+            <SplitBillScreen
+              onDataMutated={handleDataMutated}
+              onNavigateToExpenses={() => setActiveTab("expenses")}
+            />
+          )}
 
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "history" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("history")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "history" && styles.tabButtonTextActive,
-                ]}
-              >
-                📋 History
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "insights" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("insights")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "insights" && styles.tabButtonTextActive,
-                ]}
-              >
-                💡 Insights
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "budget" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("budget")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "budget" && styles.tabButtonTextActive,
-                ]}
-              >
-                🎯 Budget
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.tabButton, activeTab === "settlement" && styles.tabButtonActive]}
-              onPress={() => setActiveTab("settlement")}
-              activeOpacity={0.7}
-            >
-              <Text
-                style={[
-                  styles.tabButtonText,
-                  activeTab === "settlement" && styles.tabButtonTextActive,
-                ]}
-              >
-                🤝 Settlement
-              </Text>
-            </TouchableOpacity>
-          </ScrollView>
+          {activeTab === "insights" && (
+            <SpendingInsightsView
+              onOpenAddExpense={() => {
+                setActiveTab("expenses");
+                setIsAddExpenseOpen(true);
+              }}
+              refreshTrigger={refreshTrigger}
+            />
+          )}
         </View>
 
-        <ScrollView
-          style={styles.scrollContainer}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          automaticallyAdjustKeyboardInsets={true}
-        >
-          {activeTab === "home" ? (
-            <DashboardView onNavigate={(tab) => setActiveTab(tab)} />
-          ) : activeTab === "insights" ? (
-            <SpendingInsightsView onNavigateToAdd={() => setActiveTab("add")} />
-          ) : activeTab === "budget" ? (
-            <BudgetView onNavigateToAdd={() => setActiveTab("add")} />
-          ) : activeTab === "settlement" ? (
-            <GroupSettlementView />
-          ) : activeTab === "history" ? (
-            <ExpenseHistoryView onNavigateToAdd={() => setActiveTab("add")} />
-          ) : activeTab === "add" ? (
-            <AddExpenseView onExpenseSaved={() => setActiveTab("history")} />
-          ) : (
-            <>
-              <ErrorBanner
-                message={error}
-                onDismiss={() => setError(null)}
-                onRetry={stage === "details" ? handleCalculateSplit : undefined}
-              />
-
-              {isLoading ? (
-                <LoadingOverlay />
-              ) : (
-                <>
-                  {/* STAGE 1: Receipt Selection */}
-                  {stage === "upload" && (
-                    <ReceiptUploader
-                      receipt={receipt}
-                      onSelectReceipt={handleSelectReceipt}
-                      onContinue={handleContinueToDetails}
-                      isLoading={isLoading}
-                    />
-                  )}
-
-                  {/* STAGE 2: People & Instructions */}
-                  {stage === "details" && (
-                    <View style={styles.stageDetailsCard}>
-                      <View style={styles.stageHeaderRow}>
-                        <TouchableOpacity
-                          onPress={() => setStage("upload")}
-                          style={styles.backLink}
-                        >
-                          <Text style={styles.backLinkText}>← Change Receipt</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.stageIndicator}>Stage 2 of 2</Text>
-                      </View>
-
-                      <Text style={styles.formTitle}>Bill Split Details</Text>
-                      <Text style={styles.formSubtitle}>
-                        Add participants and choose how to split the bill.
-                      </Text>
-
-                      {/* Selected Receipt Summary pill */}
-                      {receipt && (
-                        <View style={styles.receiptPill}>
-                          <Text style={styles.receiptPillLabel}>Receipt:</Text>
-                          <Text style={styles.receiptPillName} numberOfLines={1}>
-                            {receipt.name}
-                          </Text>
-                        </View>
-                      )}
-
-                      {/* Participants Section */}
-                      <ParticipantInput
-                        people={people}
-                        onAddPerson={handleAddPerson}
-                        onRemovePerson={handleRemovePerson}
-                        disabled={isLoading}
-                      />
-
-                      {/* Equal Split Toggle Option */}
-                      <View style={styles.equalSplitCard}>
-                        <View style={styles.equalSplitLeft}>
-                          <Text style={styles.equalSplitTitle}>⚖ Split Bill Equally</Text>
-                          <Text style={styles.equalSplitSubtitle}>
-                            Divide the total bill evenly among all{" "}
-                            {people.length > 0 ? people.length : ""} participants
-                          </Text>
-                        </View>
-                        <Switch
-                          value={isEqualSplit}
-                          onValueChange={setIsEqualSplit}
-                          trackColor={{ false: "#cbd5e1", true: "#93c5fd" }}
-                          thumbColor={isEqualSplit ? "#2563eb" : "#f1f5f9"}
-                          disabled={isLoading}
-                        />
-                      </View>
-
-                      {/* Conditional: Either show Equal Split Banner or Natural Language Input */}
-                      {isEqualSplit ? (
-                        <View style={styles.equalSplitNotice}>
-                          <Text style={styles.equalSplitNoticeText}>
-                            ✓ Equal split enabled: Every participant will pay an exact equal share
-                            of the bill and tax. No AI prompt required.
-                          </Text>
-                        </View>
-                      ) : (
-                        <InstructionInput
-                          instruction={instruction}
-                          onChangeInstruction={setInstruction}
-                          disabled={isLoading}
-                        />
-                      )}
-
-                      <TouchableOpacity
-                        style={[
-                          styles.calculateButton,
-                          isCalculateDisabled && styles.buttonDisabled,
-                        ]}
-                        onPress={handleCalculateSplit}
-                        disabled={isCalculateDisabled}
-                        activeOpacity={0.8}
-                      >
-                        <Text style={styles.calculateButtonText}>
-                          {isEqualSplit ? "⚡ Calculate Equal Split" : "⚡ Calculate Split"}
-                        </Text>
-                      </TouchableOpacity>
-                    </View>
-                  )}
-
-                  {/* STAGE 3: Final Split Result */}
-                  {stage === "result" && splitResult && (
-                    <SplitResultView
-                      splitResult={splitResult}
-                      validation={validation}
-                      onReset={handleReset}
-                    />
-                  )}
-                </>
-              )}
-            </>
-          )}
-        </ScrollView>
+        {/* Material 3 Bottom Navigation Bar */}
+        <BottomNavBar
+          activeTab={activeTab}
+          onTabChange={(tab) => setActiveTab(tab)}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -465,173 +114,13 @@ function MainApp() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#ffffff",
+    backgroundColor: Colors.surface,
   },
   container: {
     flex: 1,
-    backgroundColor: "#f8fafc",
+    backgroundColor: Colors.background,
   },
-  tabContainer: {
-    backgroundColor: "#f1f5f9",
-    paddingVertical: 4,
-    marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-  },
-  tabScrollContent: {
-    paddingHorizontal: 4,
-    gap: 4,
-  },
-  tabButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    alignItems: "center",
-    borderRadius: 8,
-  },
-  tabButtonActive: {
-    backgroundColor: "#ffffff",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  tabButtonText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#64748b",
-  },
-  tabButtonTextActive: {
-    color: "#2563eb",
-    fontWeight: "700",
-  },
-  scrollContainer: {
+  contentArea: {
     flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    paddingBottom: 140,
-  },
-  stageDetailsCard: {
-    backgroundColor: "#ffffff",
-    borderRadius: 16,
-    padding: 20,
-    marginHorizontal: 16,
-    marginVertical: 12,
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  stageHeaderRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  backLink: {
-    paddingVertical: 4,
-  },
-  backLinkText: {
-    color: "#2563eb",
-    fontSize: 13,
-    fontWeight: "600",
-  },
-  stageIndicator: {
-    fontSize: 12,
-    color: "#94a3b8",
-    fontWeight: "600",
-  },
-  formTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#0f172a",
-    marginBottom: 4,
-  },
-  formSubtitle: {
-    fontSize: 13,
-    color: "#64748b",
-    marginBottom: 12,
-  },
-  receiptPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#f1f5f9",
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginBottom: 12,
-  },
-  receiptPillLabel: {
-    fontSize: 11,
-    fontWeight: "700",
-    color: "#475569",
-    marginRight: 4,
-  },
-  receiptPillName: {
-    fontSize: 12,
-    color: "#0f172a",
-    flex: 1,
-  },
-  equalSplitCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    backgroundColor: "#f8fafc",
-    borderWidth: 1,
-    borderColor: "#e2e8f0",
-    borderRadius: 12,
-    padding: 14,
-    marginVertical: 10,
-  },
-  equalSplitLeft: {
-    flex: 1,
-    marginRight: 12,
-  },
-  equalSplitTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#0f172a",
-  },
-  equalSplitSubtitle: {
-    fontSize: 12,
-    color: "#64748b",
-    marginTop: 2,
-  },
-  equalSplitNotice: {
-    backgroundColor: "#eff6ff",
-    borderWidth: 1,
-    borderColor: "#bfdbfe",
-    borderRadius: 10,
-    padding: 12,
-    marginVertical: 10,
-  },
-  equalSplitNoticeText: {
-    fontSize: 13,
-    color: "#1e40af",
-    lineHeight: 18,
-    fontWeight: "500",
-  },
-  calculateButton: {
-    backgroundColor: "#16a34a",
-    paddingVertical: 14,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 14,
-  },
-  buttonDisabled: {
-    backgroundColor: "#94a3b8",
-    opacity: 0.6,
-  },
-  calculateButtonText: {
-    color: "#ffffff",
-    fontSize: 16,
-    fontWeight: "700",
   },
 });
